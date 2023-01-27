@@ -162,3 +162,13 @@ export interface BaseStationCameraRegistration {
     Type: string,
     UpdateSystemModelNumber: string
 }
+
+export interface MotionDetectedEvent {
+    ip: string,
+    friendly_name: string,
+    hostname: string,
+    serial_number: string,
+    zone: [],
+    file_name: string,
+    time: Number
+}

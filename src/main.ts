@@ -1,105 +1,129 @@
-import { Device, DeviceDiscovery, DeviceProvider, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
+import { Device, DeviceDiscovery, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import { StorageSettings } from "@scrypted/sdk/storage-settings"
-import { ArloCamera } from './camera';
+import { ArloCameraDevice } from './camera';
 import { BaseStationApiClient, BaseStationCameraSummary, BaseStationCameraResponse, BaseStationCameraStatus } from './base-station-api-client';
 
 const { deviceManager } = sdk;
 
-class ArloCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, DeviceDiscovery, Settings {
-    arloDevices = new Map<string, ArloCamera>();
+class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, DeviceDiscovery, Settings, HttpRequestHandler {
+    private arloCameras = new Map<string, ArloCamera>();
+    private arloCameraDevices = new Map<string, ArloCameraDevice>();
     baseStationApiClient?: BaseStationApiClient;
-
-    settingsStorage = new StorageSettings(this, {
-        arloHost: {
-            title: 'Base Station API Host',
-            description: 'The URL of your arlo-cam-api, including protocol and port.',
-            placeholder: 'http://192.168.1.100:5000',
-            onPut: async () => this.discoverDevices(0),
-        },
-    });
 
     /** Settings */
 
-    getSettings(): Promise<Setting[]> {
-        return this.settingsStorage.getSettings();
+    async getSettings(): Promise<Setting[]> {
+        return [
+            {
+                key: 'arloHost',
+                title: 'Base Station API Host',
+                description: 'The URL of your arlo-cam-api, including protocol and port.',
+                placeholder: 'http://192.168.1.100:5000',
+                type: 'string',
+                value: this.getArloHost()
+            },
+            {
+                title: 'Motion Sensor Webhook',
+                description: 'To get motion alerts, adjust MotionRecordingWebHookUrl in arlo-cam-api\'s config.yaml file.',
+                type: 'string',
+                readonly: true,
+                value: await this.getMotionDetectedWebhookUrl(),
+            }
+        ];
     }
 
-    putSetting(key: string, value: SettingValue): Promise<void> {
-        return this.settingsStorage.putSetting(key, value);
+    private getArloHost(): string {
+        return this.storage.getItem('arloHost');
+    }
+
+    private async getMotionDetectedWebhookUrl(): Promise<string> {
+        this.console.info('getting webhook')
+        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
+        return `${webhookUrl}motionDetected`;
+    }
+
+    async putSetting(key: string, value: SettingValue) {
+        this.storage.setItem(key, value.toString());
+        await this.discoverDevices();
+    }
+
+    /** HttpRequestHandler */
+    async onRequest(request: HttpRequest, response: HttpResponse): Promise<void> {
+        // if (request.url.endsWith('/motionDetected')) {
+        //     const motionDetectedEvent: MotionDetectedEvent = JSON.parse(request.body);
+        //     if (!motionDetectedEvent.serial_number) {
+        //         response.send('Missing serial_number in body', {
+        //             code: 400,
+        //         });
+        //         return;
+        //     }
+        //     if (!this.arloDevices.has(motionDetectedEvent.serial_number)) {
+        //         response.send(`Serial number ${motionDetectedEvent.serial_number} not found`, {
+        //             code: 500,
+        //         });
+        //         return;
+        //     }
+
+        //     this.arloDevices.get(motionDetectedEvent.serial_number).onMotionDetected();
+        // }
+
+        response.send('OK');
     }
 
     /** DeviceDiscovery */
 
     async discoverDevices(duration?: number) {
-        this.console.info("Discovering devices...")
-        this.arloDevices.clear();
-        const devices: Device[] = [];
+        const arloHost = this.getArloHost();
+        if (!arloHost) {
+            this.console.log("Enter API host information in the settings to discover your devices.");
+            return;
+        }
 
-        const arloHost = this.settingsStorage.getItem('arloHost');
+        this.console.info("Discovering devices...")
+        this.arloCameras.clear();
+        this.arloCameraDevices.clear();
+
+        const scryptedDevices: Device[] = [];
+
         this.baseStationApiClient = new BaseStationApiClient(`${arloHost}`);
         const listCamerasResponse = await this.baseStationApiClient.listCameras();
         if (!listCamerasResponse) {
             return;
         }
-        const cameraSummaries = new Map(listCamerasResponse.map((obj) => [obj.serial_number, obj]));
 
-        // generate a new status for each camera in parallel
-        const generateStatusPromises: Promise<BaseStationCameraResponse>[] = [];
-        cameraSummaries.forEach((cameraSummary: BaseStationCameraSummary) => {
+        await Promise.allSettled(listCamerasResponse.map(async (cameraSummary: BaseStationCameraSummary) => {
+            // generate a new status for each camera
             const serialNumber = cameraSummary.serial_number;
-            const generateStatusPromise = this.baseStationApiClient.postGenerateStatusRequest(serialNumber);
-            generateStatusPromises.push(generateStatusPromise);
-            generateStatusPromise.catch(error => {
-                this.console.error(`Status update request failed for ${serialNumber}; skipping.Error: ${error} `);
-            });
-        });
-
-        // wait for all of the requests to finish
-        const generateStatusPromiseResults = await Promise.allSettled(generateStatusPromises);
-
-        // request the status from each camera in parallel
-        const statusPromises: Promise<BaseStationCameraStatus>[] = [];
-
-        for (const generateStatusPromiseResult of generateStatusPromiseResults) {
-            if (generateStatusPromiseResult.status === 'fulfilled') {
-                const serialNumber = generateStatusPromiseResult.value.serialNumber
-                if (generateStatusPromiseResult.value.result) {
+            try {
+                const generateStatusResponse = await this.baseStationApiClient.postGenerateStatusRequest(serialNumber);
+                if (generateStatusResponse.result) {
                     this.console.debug(`Status update request succeeded for ${serialNumber}; continuing to retrieve status.`);
                 } else {
                     this.console.error(`Status update request reached ${serialNumber}, but failed for some reason; skipping.`);
-                    continue;
+                    return;
                 }
+            } catch (error) {
+                this.console.error(`Status update request failed for ${serialNumber}; skipping.Error: ${error} `);
+                return;
+            };
 
-                const statusPromise = this.baseStationApiClient.getCameraStatus(serialNumber);
-                statusPromises.push(statusPromise);
-                statusPromise.catch(error => {
-                    this.console.error(`Status retrieval failed for ${serialNumber}; skipping. Error: ${error}`);
-                });
-            }
-        }
-
-        // wait for all of the requests to finish
-        const statusPromiseResults = await Promise.allSettled(statusPromises);
-
-        // parse the responses from each camera
-        for (const statusPromiseResult of statusPromiseResults) {
-            if (statusPromiseResult.status === 'fulfilled') {
-                const cameraStatus = statusPromiseResult.value;
-                const serialNumber = cameraStatus.SystemSerialNumber;
+            try {
+                const cameraStatus = await this.baseStationApiClient.getCameraStatus(serialNumber);
                 this.console.debug(`Status retrieved for ${serialNumber}.`);
-                const cameraSummary = cameraSummaries.get(serialNumber);
-                const arloCamera = new ArloCamera(this, cameraSummary.serial_number, cameraSummary, cameraStatus);
-                this.arloDevices.set(arloCamera.nativeId, arloCamera);
 
-                devices.push({
+                const arloCamera: ArloCamera = { cameraSummary, cameraStatus };
+                this.arloCameras.set(cameraSummary.serial_number, arloCamera);
+
+                scryptedDevices.push({
                     name: arloCamera.cameraSummary.friendly_name,
-                    nativeId: arloCamera.nativeId,
+                    nativeId: arloCamera.cameraSummary.serial_number,
                     type: ScryptedDeviceType.Camera,
                     interfaces: [
+                        ScryptedInterface.Battery,
                         ScryptedInterface.Camera,
-                        ScryptedInterface.VideoCamera,
+                        ScryptedInterface.MotionSensor,
                         ScryptedInterface.Settings,
+                        ScryptedInterface.VideoCamera,
                     ],
                     info: {
                         firmware: arloCamera.cameraStatus.SystemFirmwareVersion,
@@ -110,15 +134,18 @@ class ArloCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, Dev
                     },
                 });
 
-                this.console.info(`Discovered device ${arloCamera.nativeId}`);
+                this.console.info(`Discovered device ${arloCamera.cameraSummary.serial_number}`);
+            } catch (error) {
+                this.console.error(`Status retrieval failed for ${serialNumber}; skipping. Error: ${error}`);
+                return;
             }
-        }
+        }));
 
         await deviceManager.onDevicesChanged({
-            devices,
+            devices: scryptedDevices,
         });
 
-        this.console.log(`Discovered ${devices.length} devices.`);
+        this.console.log(`Discovered ${scryptedDevices.length} devices.`);
     }
 
     /** DeviceProvider */
@@ -127,11 +154,23 @@ class ArloCameraPlugin extends ScryptedDeviceBase implements DeviceProvider, Dev
         // Does nothing.
     }
 
-    async getDevice(nativeId: string) {
-        return this.arloDevices.get(nativeId);
+    async getDevice(nativeId: string): Promise<any> {
+        if (this.arloCameraDevices.has(nativeId))
+            return this.arloCameraDevices.get(nativeId);
+        const arloCamera = this.arloCameras.get(nativeId);
+        if (!arloCamera)
+            throw new Error('camera not found?');
+        const ret = new ArloCameraDevice(this, nativeId, arloCamera.cameraSummary, arloCamera.cameraStatus);
+        this.arloCameraDevices.set(nativeId, ret);
+        return ret;
     }
 }
 
-export { ArloCameraPlugin };
+interface ArloCamera {
+    cameraSummary: BaseStationCameraSummary,
+    cameraStatus: BaseStationCameraStatus,
+}
 
-export default new ArloCameraPlugin();
+export { ArloCameraProvider as ArloCameraProvider };
+
+export default new ArloCameraProvider();

@@ -1,7 +1,7 @@
 import { Device, DeviceDiscovery, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 import { ArloCameraDevice } from './camera';
-import { BaseStationApiClient, BaseStationCameraSummary, BaseStationCameraResponse, BaseStationCameraStatus } from './base-station-api-client';
+import { BaseStationApiClient, BaseStationCameraSummary, MotionDetectedEvent, BaseStationCameraStatus } from './base-station-api-client';
 
 const { deviceManager } = sdk;
 
@@ -9,6 +9,11 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
     private arloCameras = new Map<string, ArloCamera>();
     private arloCameraDevices = new Map<string, ArloCameraDevice>();
     baseStationApiClient?: BaseStationApiClient;
+
+    constructor(nativeId?: string) {
+        super(nativeId);
+        this.discoverDevices();
+    }
 
     /** Settings */
 
@@ -49,24 +54,25 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
 
     /** HttpRequestHandler */
     async onRequest(request: HttpRequest, response: HttpResponse): Promise<void> {
-        // if (request.url.endsWith('/motionDetected')) {
-        //     const motionDetectedEvent: MotionDetectedEvent = JSON.parse(request.body);
-        //     if (!motionDetectedEvent.serial_number) {
-        //         response.send('Missing serial_number in body', {
-        //             code: 400,
-        //         });
-        //         return;
-        //     }
-        //     if (!this.arloDevices.has(motionDetectedEvent.serial_number)) {
-        //         response.send(`Serial number ${motionDetectedEvent.serial_number} not found`, {
-        //             code: 500,
-        //         });
-        //         return;
-        //     }
+        if (request.url.endsWith('/motionDetected')) {
+            const motionDetectedEvent: MotionDetectedEvent = JSON.parse(request.body);
+            if (!motionDetectedEvent.serial_number) {
+                response.send('Missing serial_number in body', {
+                    code: 400,
+                });
+                return;
+            }
+            if (!this.arloCameraDevices.has(motionDetectedEvent.serial_number)) {
+                response.send(`Serial number ${motionDetectedEvent.serial_number} not found`, {
+                    code: 500,
+                });
+                return;
+            }
 
-        //     this.arloDevices.get(motionDetectedEvent.serial_number).onMotionDetected();
-        // }
+            this.arloCameraDevices.get(motionDetectedEvent.serial_number).onMotionDetected();
+        }
 
+        this.console.info(`Received webhook request: ${request.body}`);
         response.send('OK');
     }
 
@@ -113,26 +119,7 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
 
                 const arloCamera: ArloCamera = { cameraSummary, cameraStatus };
                 this.arloCameras.set(cameraSummary.serial_number, arloCamera);
-
-                scryptedDevices.push({
-                    name: arloCamera.cameraSummary.friendly_name,
-                    nativeId: arloCamera.cameraSummary.serial_number,
-                    type: ScryptedDeviceType.Camera,
-                    interfaces: [
-                        ScryptedInterface.Battery,
-                        ScryptedInterface.Camera,
-                        ScryptedInterface.MotionSensor,
-                        ScryptedInterface.Settings,
-                        ScryptedInterface.VideoCamera,
-                    ],
-                    info: {
-                        firmware: arloCamera.cameraStatus.SystemFirmwareVersion,
-                        manufacturer: 'Arlo Technologies, Inc.',
-                        model: arloCamera.cameraStatus.UpdateSystemModelNumber,
-                        serialNumber: arloCamera.cameraStatus.SystemSerialNumber,
-                        version: arloCamera.cameraStatus.HardwareRevision,
-                    },
-                });
+                scryptedDevices.push(this.createScryptedDevice(arloCamera));
 
                 this.console.info(`Discovered device ${arloCamera.cameraSummary.serial_number}`);
             } catch (error) {
@@ -142,10 +129,34 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         }));
 
         await deviceManager.onDevicesChanged({
+            providerNativeId: this.nativeId,
             devices: scryptedDevices,
         });
 
         this.console.log(`Discovered ${scryptedDevices.length} devices.`);
+    }
+
+    createScryptedDevice(arloCamera: ArloCamera): Device {
+        return {
+            name: arloCamera.cameraSummary.friendly_name,
+            nativeId: arloCamera.cameraSummary.serial_number,
+            type: ScryptedDeviceType.Camera,
+            interfaces: [
+                // ScryptedInterface.Battery, TODO re-add this later when we start getting status updates
+                ScryptedInterface.Camera,
+                ScryptedInterface.MotionSensor,
+                ScryptedInterface.Settings,
+                ScryptedInterface.VideoCamera,
+            ],
+            info: {
+                firmware: arloCamera.cameraStatus.SystemFirmwareVersion,
+                manufacturer: 'Arlo Technologies, Inc.',
+                model: arloCamera.cameraStatus.UpdateSystemModelNumber,
+                serialNumber: arloCamera.cameraStatus.SystemSerialNumber,
+                version: arloCamera.cameraStatus.HardwareRevision,
+            },
+            providerNativeId: this.nativeId,
+        };
     }
 
     /** DeviceProvider */
@@ -163,6 +174,12 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         const ret = new ArloCameraDevice(this, nativeId, arloCamera.cameraSummary, arloCamera.cameraStatus);
         this.arloCameraDevices.set(nativeId, ret);
         return ret;
+    }
+
+    async updateDeviceInterfaces(nativeId: string, interfaces: string[]) {
+        let device = this.createScryptedDevice(this.arloCameras.get(nativeId));
+        device.interfaces = interfaces;
+        deviceManager.onDeviceDiscovered(device)
     }
 }
 

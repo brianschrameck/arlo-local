@@ -52,6 +52,12 @@ export class BaseStationApiClient {
         return response;
     }
 
+    public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<BaseStationCameraResponse> {
+        const response = await this.sendRequest<BaseStationCameraResponse>(`/${serialNumber}/userstreamactive`, 'post', { active: Number(isActive) });
+
+        return { serialNumber, ...response };
+    }
+
     private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
         try {
             await sleep(200);

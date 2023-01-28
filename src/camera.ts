@@ -1,19 +1,25 @@
-import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, RequestMediaStreamOptions, ResponseMediaStreamOptions, ScryptedDeviceBase, Setting, Settings, SettingValue, VideoCamera } from '@scrypted/sdk';
+import { Battery, Camera, FFmpegInput, ScryptedInterface, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, ScryptedDeviceBase, Setting, Settings, SettingValue, VideoCamera } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 import { ArloCameraProvider } from './main';
 import child_process from "child_process";
 import { BaseStationCameraSummary, BaseStationCameraStatus } from './base-station-api-client';
 import net from 'net';
+import { sleep } from '@scrypted/common/src/sleep';
+import { once } from 'events';
 const { mediaManager } = sdk;
 
-const GSTREAMER_TIMEOUT = 40000; // milliseconds (refresh clock is 30 seconds behind for some reason, this should give about a 10 second refreshinterval)
+const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
+const GSTREAMER_TIMEOUT = 11000; // milliseconds (leave a 1 second buffer for rebroadcast to call back)
 const DEFAULT_SENSOR_TIMEOUT = 30; // seconds
+const COOLDOWN_TIMEOUT = 10000;
 
 export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
     private motionTimeout?: NodeJS.Timeout;
     private gstreamerProcess?: child_process.ChildProcessWithoutNullStreams;
     private refreshTimeout?: NodeJS.Timeout;
     private originalMedia?: FFmpegInput;
+    private gstreamerPort?: number;
+    private gstreamerKillTime?: number;
 
     cameraSummary: BaseStationCameraSummary;
     cameraStatus: BaseStationCameraStatus;
@@ -25,9 +31,30 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         this.batteryLevel = cameraStatus.BatPercent;
     }
 
+    public getDeviceInterfaces(): string[] {
+        let interfaces = [
+            ScryptedInterface.Camera,
+            ScryptedInterface.MotionSensor,
+            ScryptedInterface.Settings,
+            ScryptedInterface.VideoCamera,
+        ];
+
+        // only add the Battery interface if we are not on power
+        if (this.cameraStatus.ChargingState !== 'On') {
+            interfaces.push(ScryptedInterface.Battery);
+        }
+
+        return interfaces;
+    }
+
+    async onDeviceChargingStateChanged() {
+        this.provider.updateDeviceInterfaces(this.nativeId, this.getDeviceInterfaces());
+    }
+
     onStatusUpdate(cameraStatus: BaseStationCameraStatus) {
         this.cameraStatus = cameraStatus;
         this.batteryLevel = cameraStatus.BatPercent;
+        this.provider.updateDeviceInterfaces(this.nativeId, this.getDeviceInterfaces());
     }
 
     onMotionDetected() {
@@ -54,7 +81,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         return;
     }
 
-    async takePictureThrottled(option?: PictureOptions): Promise<MediaObject> {
+    async takePictureThrottled(): Promise<MediaObject> {
         // TODO: implement this
         return;
     }
@@ -87,7 +114,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             const newMedia = this.originalMedia;
 
             // set a new refresh date
-            newMedia.mediaStreamOptions.refreshAt = Date.now() + GSTREAMER_TIMEOUT;
+            newMedia.mediaStreamOptions.refreshAt = Date.now() + REFRESH_TIMEOUT;
             newMedia.mediaStreamOptions.metadata = {
                 refreshAt: newMedia.mediaStreamOptions.refreshAt
             };
@@ -97,40 +124,63 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             return mediaManager.createFFmpegMediaObject(newMedia);
         }
 
-        // get a free port to use
-        const gstreamerPort = await this.getOpenPort();
-        //const gstreamerPort = Math.round(Math.random() * 30000 + 30000);
-
-        // build the gstreamer command
-        let gstArgs: string[] = [];
-        if (this.getGStreamerInput()) {
-            gstArgs = this.getGStreamerInput().split(' ');
-        } else {
-            gstArgs.push(
-                // set up the RTSP source from the camera
-                'rtspsrc', `location=rtsp://${this.cameraSummary.ip}/live`, 'name=arlo', 'latency=200',
-                // parse the h264 video stream and push it to our sink
-                'arlo.', '!', 'rtph264depay', '!', 'queue', '!', 'mux.');
-            if (!this.isAudioDisabled()) {
-                // parse the opus audio stream and push it to our sink
-                gstArgs.push('arlo.', '!', 'rtpopusdepay', '!', 'queue', '!', 'mux.');
+        // only startup gstreamer if we don't already have a process running; this could occur 
+        if (this.gstreamerProcess) {
+            this.resetStreamTimeout();
+        }
+        else {
+            if (this.gstreamerKillTime ?? 0 + COOLDOWN_TIMEOUT > Date.now()) {
+                const waitTime = this.gstreamerKillTime + COOLDOWN_TIMEOUT - Date.now();
+                this.console.info(`waiting ${waitTime} for camera cooldown`)
+                await sleep(waitTime);
             }
-            // configure our mux to mpegts and TCP sink to FFMPEG
-            gstArgs.push('mpegtsmux', 'name=mux', '!', 'tcpserversink', 'host=127.0.0.1', `port=${gstreamerPort}`, 'timeout=10000000000'/*ns*/);
+
+            // cameras tend to be unresponsive, particularly on battery, so send a status request to wake them up
+            await this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, true);
+
+            // get a free port to use
+            this.gstreamerPort = await this.getOpenPort();
+
+            // build the gstreamer command
+            let gstArgs: string[] = [];
+            if (this.getGStreamerInput()) {
+                gstArgs = this.getGStreamerInput().split(' ');
+            } else {
+                gstArgs.push(
+                    // set up the RTSP source from the camera
+                    'rtspsrc', `location=rtsp://${this.cameraSummary.ip}/live`, 'name=arlo', 'latency=200', 'protocols=udp', 'timeout=30000000', 'drop-on-latency=true',
+                    // parse the h264 video stream and push it to our sink
+                    'arlo.', '!', 'rtph264depay', '!', 'queue', '!', 'mux.');
+                if (!this.isAudioDisabled()) {
+                    // parse the opus audio stream and push it to our sink
+                    gstArgs.push('arlo.', '!', 'rtpopusdepay', '!', 'queue', '!', 'mux.');
+                }
+                // configure our mux to mpegts and UDP sink to FFMPEG
+                gstArgs.push('mpegtsmux', 'name=mux', '!', 'udpsink', 'host=127.0.0.1', `port=${this.gstreamerPort}`);
+            }
+
+            // launch the gstreamer command to start the stream
+            this.console.info('starting GStreamer pipeline; command: gst-launch-1.0 ' + gstArgs.join(' '));
+            this.gstreamerProcess = child_process.spawn('gst-launch-1.0', gstArgs, { env: { GST_DEBUG: this.isGstDebugEnabled() ? '5' : '1' } });
+            this.gstreamerProcess.stdout.on('data', data => this.console.log(data.toString()));
+            this.gstreamerProcess.stderr.on('data', data => this.console.log(data.toString()));
+            this.gstreamerProcess.on('close', () => { this.killGStreamer() });
+
+            await once(this.gstreamerProcess, 'spawn');
+            this.gstreamerProcess.once('exit', () => {
+                this.killGStreamer();
+                return;
+            });
         }
 
-        // launch the gstreamer command to start the stream
-        this.console.info('starting GStreamer pipeline; command: gst-launch-1.0 ' + gstArgs.join(' '));
-        this.gstreamerProcess = child_process.spawn('gst-launch-1.0', gstArgs, { env: { GST_DEBUG: this.isGstDebugEnabled() ? '5' : '1' } });
-        this.gstreamerProcess.stdout.on('data', data => this.console.log(data.toString()));
-        this.gstreamerProcess.stderr.on('data', data => this.console.log(data.toString()));
+        await sleep(200);
 
         // build the ffmpeg command
         let ffmpegArgs: string[] = [];
         if (this.getFfmpegInput()) {
             ffmpegArgs = this.getFfmpegInput().split(' ');
         } else {
-            ffmpegArgs = ['-timeout', '1000000', '-f', 'mpegts', '-i', `tcp://127.0.0.1:${gstreamerPort}`];
+            ffmpegArgs = ['-timeout', '1000000', '-f', 'mpegts', '-i', `udp://127.0.0.1:${this.gstreamerPort}`];
         }
 
         // return the ffmpeg input that should contain the output of the gstreamer pipeline
@@ -139,7 +189,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             inputArguments: ffmpegArgs,
             mediaStreamOptions: {
                 id: options?.id ?? 'channel0',
-                refreshAt: Date.now() + GSTREAMER_TIMEOUT,
+                refreshAt: Date.now() + REFRESH_TIMEOUT,
                 ...options
             },
         };
@@ -155,12 +205,15 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         this.refreshTimeout = setTimeout(() => this.killGStreamer(), GSTREAMER_TIMEOUT);
     }
 
-    killGStreamer() {
+    async killGStreamer() {
         if (this.gstreamerProcess) {
             this.log.d('ending gstreamer process');
             this.gstreamerProcess.kill();
             this.gstreamerProcess = undefined;
+            this.gstreamerKillTime = Date.now();
+            this.gstreamerPort = undefined;
         }
+        await this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
     }
 
     /** Settings */

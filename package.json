@@ -28,7 +28,8 @@
       "interfaces": [
          "Settings",
          "DeviceProvider",
-         "DeviceDiscovery"
+         "DeviceDiscovery",
+         "HttpRequestHandler"
       ],
       "pluginDependencies": [
          "@scrypted/snapshot",

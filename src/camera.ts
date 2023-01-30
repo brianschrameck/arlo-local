@@ -2,7 +2,7 @@ import { Battery, Camera, FFmpegInput, ScryptedInterface, MediaObject, MotionSen
 import sdk from '@scrypted/sdk';
 import { ArloCameraProvider } from './main';
 import child_process from "child_process";
-import { BaseStationCameraSummary, BaseStationCameraStatus } from './base-station-api-client';
+import { CameraSummary, CameraStatus } from './base-station-api-client';
 import net from 'net';
 import { sleep } from '@scrypted/common/src/sleep';
 import { once } from 'events';
@@ -21,40 +21,20 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     private gstreamerPort?: number;
     private gstreamerKillTime?: number;
 
-    cameraSummary: BaseStationCameraSummary;
-    cameraStatus: BaseStationCameraStatus;
+    cameraSummary: CameraSummary;
+    cameraStatus: CameraStatus;
 
-    constructor(public provider: ArloCameraProvider, nativeId: string, cameraSummary: BaseStationCameraSummary, cameraStatus: BaseStationCameraStatus) {
+    constructor(public provider: ArloCameraProvider, nativeId: string, cameraSummary: CameraSummary, cameraStatus: CameraStatus) {
         super(nativeId);
         this.cameraSummary = cameraSummary;
         this.cameraStatus = cameraStatus;
         this.batteryLevel = cameraStatus.BatPercent;
     }
 
-    public getDeviceInterfaces(): string[] {
-        let interfaces = [
-            ScryptedInterface.Camera,
-            ScryptedInterface.MotionSensor,
-            ScryptedInterface.Settings,
-            ScryptedInterface.VideoCamera,
-        ];
-
-        // only add the Battery interface if we are not on power
-        if (this.cameraStatus.ChargingState !== 'On') {
-            interfaces.push(ScryptedInterface.Battery);
-        }
-
-        return interfaces;
-    }
-
-    async onDeviceChargingStateChanged() {
-        this.provider.updateDeviceInterfaces(this.nativeId, this.getDeviceInterfaces());
-    }
-
-    onStatusUpdate(cameraStatus: BaseStationCameraStatus) {
+    onStatusUpdated(cameraStatus: CameraStatus) {
         this.cameraStatus = cameraStatus;
-        this.batteryLevel = cameraStatus.BatPercent;
-        this.provider.updateDeviceInterfaces(this.nativeId, this.getDeviceInterfaces());
+        this.batteryLevel = this.cameraStatus.BatPercent;
+        this.provider.updateDevice(this.nativeId, this.cameraStatus);
     }
 
     onMotionDetected() {
@@ -104,6 +84,11 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
     // implement
     async getVideoStream(options?: ResponseMediaStreamOptions): Promise<MediaObject> {
+        // skip all processing if the camera is disabled
+        if (this.isCameraDisabled()) {
+            return;
+        }
+
         // check if this is a refresh call
         if (options?.refreshAt) {
             if (!this.gstreamerProcess || !this.originalMedia) {
@@ -148,12 +133,12 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             } else {
                 gstArgs.push(
                     // set up the RTSP source from the camera
-                    'rtspsrc', `location=rtsp://${this.cameraSummary.ip}/live`, 'name=arlo', 'latency=200', 'protocols=udp', 'timeout=30000000', 'drop-on-latency=true',
+                    'rtspsrc', `location=rtsp://${this.cameraSummary.ip}/live`, 'name=arlo', 'latency=1000', 'protocols=udp', 'timeout=30000000', 'drop-on-latency=true', 'do-rtsp-keep-alive=false', 'ntp-sync=true',
                     // parse the h264 video stream and push it to our sink
-                    'arlo.', '!', 'rtph264depay', '!', 'queue', '!', 'mux.');
+                    'arlo.', '!', 'rtph264depay', '!', 'mux.');
                 if (!this.isAudioDisabled()) {
                     // parse the opus audio stream and push it to our sink
-                    gstArgs.push('arlo.', '!', 'rtpopusdepay', '!', 'queue', '!', 'mux.');
+                    gstArgs.push('arlo.', '!', 'rtpopusdepay', '!', 'mux.');
                 }
                 // configure our mux to mpegts and UDP sink to FFMPEG
                 gstArgs.push('mpegtsmux', 'name=mux', '!', 'udpsink', 'host=127.0.0.1', `port=${this.gstreamerPort}`);
@@ -161,7 +146,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
             // launch the gstreamer command to start the stream
             this.console.info('starting GStreamer pipeline; command: gst-launch-1.0 ' + gstArgs.join(' '));
-            this.gstreamerProcess = child_process.spawn('gst-launch-1.0', gstArgs, { env: { GST_DEBUG: this.isGstDebugEnabled() ? '5' : '1' } });
+            this.gstreamerProcess = child_process.spawn('gst-launch-1.0', gstArgs, { env: { GST_DEBUG: this.isGstDebug() ? '5' : '1' } });
             this.gstreamerProcess.stdout.on('data', data => this.console.log(data.toString()));
             this.gstreamerProcess.stderr.on('data', data => this.console.log(data.toString()));
             this.gstreamerProcess.on('close', () => { this.killGStreamer() });
@@ -172,8 +157,6 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
                 return;
             });
         }
-
-        await sleep(200);
 
         // build the ffmpeg command
         let ffmpegArgs: string[] = [];
@@ -244,19 +227,26 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
                 description: 'Time to wait in seconds before clearing the motion detected state.',
             },
             {
-                key: 'noAudio',
+                key: 'isAudioDisabled',
                 title: 'No Audio',
                 description: 'Enable this setting if the camera does not have audio or to mute audio.',
                 type: 'boolean',
                 value: (this.isAudioDisabled()).toString(),
             },
             {
-                key: 'gstDebug',
+                key: 'isGstDebug',
                 title: 'GStreamer Debug',
                 description: 'Enable this setting if you want additional debug output for the GStreamer pipeline.',
                 type: 'boolean',
-                value: (this.isGstDebugEnabled()).toString(),
+                value: (this.isGstDebug()).toString(),
             },
+            {
+                key: 'isCameraDisabled',
+                title: 'Disable Camera',
+                description: 'Enable this setting if you want to disable this camera. All video processing will be disabled.',
+                type: 'boolean',
+                value: (this.isCameraDisabled()).toString(),
+            }
         ];
     }
 
@@ -278,11 +268,15 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     }
 
     isAudioDisabled() {
-        return this.storage.getItem('noAudio') === 'true' || this.cameraStatus.UpdateSystemModelNumber === 'VMC3030';
+        return this.storage.getItem('isAudioDisabled') === 'true' || this.cameraStatus.UpdateSystemModelNumber === 'VMC3030';
     }
 
-    isGstDebugEnabled() {
-        return this.storage.getItem('gstDebug') === 'true';
+    isGstDebug() {
+        return this.storage.getItem('isGstDebug') === 'true';
+    }
+
+    isCameraDisabled() {
+        return this.storage.getItem('isCameraDisabled') === 'true';
     }
 
     private isPortOpen = async (port: number): Promise<boolean> => {

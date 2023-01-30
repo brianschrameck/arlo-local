@@ -20,42 +20,36 @@ export class BaseStationApiClient {
         });
     }
 
-    public async listCameras(): Promise<BaseStationCameraSummary[]> {
-        const response = await this.sendRequest<BaseStationCameraSummary[]>();
-
+    public async listCameras(): Promise<CameraSummary[]> {
+        const response = await this.sendRequest<CameraSummary[]>();
         return response;
     }
 
-    public async postGenerateStatusRequest(serialNumber: string): Promise<BaseStationCameraResponse> {
-        const response = await this.sendRequest<BaseStationCameraResponse>(`/${serialNumber}/statusrequest`, 'post');
-
-        return { serialNumber, ...response };
-    }
-
-    public async getCameraStatus(serialNumber: string): Promise<BaseStationCameraStatus> {
-        const response = await this.sendRequest<BaseStationCameraStatus>(`/${serialNumber}`);
-
+    public async postGenerateStatusRequest(serialNumber: string): Promise<CameraResponse> {
+        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/statusrequest`, 'post');
         return response;
     }
 
-    public async getCameraRegistration(serialNumber: string): Promise<BaseStationCameraStatus> {
-        const response = await this.sendRequest<BaseStationCameraStatus>(`/${serialNumber}/registration`);
-
+    public async getCameraStatus(serialNumber: string): Promise<CameraStatus> {
+        const response = await this.sendRequest<CameraStatus>(`/${serialNumber}`);
         return response;
     }
 
-    public async postSnapshotRequest(serialNumber: string): Promise<BaseStationCameraResponse> {
-        { url: "http://172.14.1.1:5000/snapshot/blah/temp.jpg" }
-
-        const response = await this.sendRequest<BaseStationCameraResponse>(`/${serialNumber}/snapshot`);
-
+    public async getCameraRegistration(serialNumber: string): Promise<CameraStatus> {
+        const response = await this.sendRequest<CameraStatus>(`/${serialNumber}/registration`);
         return response;
     }
 
-    public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<BaseStationCameraResponse> {
-        const response = await this.sendRequest<BaseStationCameraResponse>(`/${serialNumber}/userstreamactive`, 'post', { active: Number(isActive) });
+    public async postSnapshotRequest(serialNumber: string): Promise<CameraResponse> {
+        // TODO: implement this { url: "http://172.14.1.1:5000/snapshot/blah/temp.jpg" }
 
-        return { serialNumber, ...response };
+        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/snapshot`);
+        return response;
+    }
+
+    public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<CameraResponse> {
+        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/userstreamactive`, 'post', { active: Number(isActive) });
+        return response;
     }
 
     private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
@@ -80,19 +74,18 @@ export class BaseStationApiClient {
     }
 }
 
-export interface BaseStationCameraResponse {
-    serialNumber: string,
+export interface CameraResponse {
     result: boolean
 }
 
-export interface BaseStationCameraSummary {
+export interface CameraSummary {
     friendly_name: string;
     hostname: string;
     ip: string;
     serial_number: string;
 }
 
-export interface BaseStationCameraStatus {
+export interface CameraStatus {
     Bat1Volt: number,
     BatPercent: number,
     BatTech: string,
@@ -142,39 +135,22 @@ export interface BaseStationCameraStatus {
     WifiCountryDetails: string
 }
 
-export interface BaseStationCameraRegistration {
-    BatPercent: number,
-    BatTech: string,
-    BattChargeMaxTemp: number,
-    BattChargeMinTemp: number,
-    BootSeconds: number,
-    Capabilities: [string],
-    ChargerTech: string,
-    ChargingState: string,
-    CommProtocolVersion: number,
-    HardwareRevision: string,
-    ID: number,
-    InterfaceVersion: number,
-    LogFrequency: number,
-    SignalStrengthIndicator: number,
-    Sync: boolean,
-    SystemFirmwareVersion: string,
-    SystemModelNumber: string,
-    SystemSerialNumber: string,
-    Temperature: number,
-    ThermalShutdownMaxTemp: number,
-    ThermalShutdownMinTemp: number,
-    ThermalShutdownRechargeMaxTemp: number,
-    Type: string,
-    UpdateSystemModelNumber: string
-}
-
-export interface MotionDetectedEvent {
+export interface WebhookEvent {
     ip: string,
     friendly_name: string,
     hostname: string,
     serial_number: string,
+}
+
+export interface MotionDetectedEvent extends WebhookEvent {
     zone: [],
     file_name: string,
     time: Number
+}
+
+export interface StatusUpdatedEvent extends WebhookEvent {
+    // annoyingly, it's not easy to return nested JSON using 
+    // the default JSON serializer in Python, so we receive a 
+    // stringified JSON object here
+    status: string
 }

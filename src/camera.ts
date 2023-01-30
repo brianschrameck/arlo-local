@@ -41,6 +41,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     }
 
     onMotionDetected() {
+        this.isSnapshotEligible = true;
         this.motionDetected = true;
         this.resetMotionTimeout();
     }

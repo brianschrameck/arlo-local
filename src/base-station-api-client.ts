@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, Method } from 'axios';
+import axios, { AxiosError, AxiosInstance, Method } from 'axios';
 import https from 'https';
 import { sleep } from '@scrypted/common/src/sleep';
 
@@ -14,42 +14,40 @@ export class BaseStationApiClient {
     constructor(baseUrl: string) {
         this.baseUrl = baseUrl;
         this.client = axios.create({
-            baseURL: `${baseUrl}/camera`,
+            baseURL: `${baseUrl}`,
             timeout: 10000,
             httpsAgent,
         });
     }
 
     public async listCameras(): Promise<CameraSummary[]> {
-        const response = await this.sendRequest<CameraSummary[]>();
-        return response;
+        return await this.sendRequest<CameraSummary[]>('/camera');
     }
 
     public async postGenerateStatusRequest(serialNumber: string): Promise<CameraResponse> {
-        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/statusrequest`, 'post');
-        return response;
+        return await this.sendRequest<CameraResponse>(`/camera/${serialNumber}/statusrequest`, 'post');
     }
 
     public async getCameraStatus(serialNumber: string): Promise<CameraStatus> {
-        const response = await this.sendRequest<CameraStatus>(`/${serialNumber}`);
-        return response;
+        return await this.sendRequest<CameraStatus>(`/camera/${serialNumber}`);
     }
 
     public async getCameraRegistration(serialNumber: string): Promise<CameraStatus> {
-        const response = await this.sendRequest<CameraStatus>(`/${serialNumber}/registration`);
-        return response;
+        return await this.sendRequest<CameraStatus>(`/camera/${serialNumber}/registration`);
     }
 
     public async postSnapshotRequest(serialNumber: string): Promise<CameraResponse> {
-        // TODO: implement this { url: "http://172.14.1.1:5000/snapshot/blah/temp.jpg" }
+        const data = { url: `${this.baseUrl}/snapshot/${serialNumber}/temp.jpg` };
+        return await this.sendRequest<CameraResponse>(`/camera/${serialNumber}/snapshot`, 'post', data);
+    }
 
-        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/snapshot`);
-        return response;
+    public async getSnapshot(serialNumber: string): Promise<ArrayBuffer> {
+        return await this.sendFileRequest<ArrayBuffer>(`/snapshot/${serialNumber}`);
     }
 
     public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<CameraResponse> {
-        const response = await this.sendRequest<CameraResponse>(`/${serialNumber}/userstreamactive`, 'post', { active: Number(isActive) });
-        return response;
+        const data = { active: Number(isActive) };
+        return await this.sendRequest<CameraResponse>(`/camera/${serialNumber}/userstreamactive`, 'post', data);
     }
 
     private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
@@ -58,18 +56,32 @@ export class BaseStationApiClient {
             const response = await this.client.request<T>({ url, method, data })
             return response.data;
         } catch (error) {
-            if (error.response) {
-                // Request made but the server responded with an error
-                console.log(error.response.data);
-                console.log(error.response.status);
-                console.log(error.response.headers);
-            } else if (error.request) {
-                // Request made but no response is received from the server.
-                console.log(error.request);
-            } else {
-                // Error occured while setting up the request
-                console.log('Error', error.message);
-            }
+            this.handleError(error);
+        }
+    }
+
+    private async sendFileRequest<T>(url?: string, method?: Method, data?: any): Promise<ArrayBuffer> {
+        try {
+            await sleep(200);
+            const response = await this.client.request<any>({ url, method, data, responseType: 'arraybuffer' })
+            return Buffer.from(response.data, 'binary');
+        } catch (error: any | AxiosError) {
+            this.handleError(error);
+        }
+    }
+
+    private handleError(error: AxiosError) {
+        if (error.response) {
+            // Request made but the server responded with an error
+            console.log(error.response.data);
+            console.log(error.response.status);
+            console.log(error.response.headers);
+        } else if (error.request) {
+            // Request made but no response is received from the server.
+            console.log(error.request);
+        } else {
+            // Error occured while setting up the request
+            console.log('Error', error.message);
         }
     }
 }

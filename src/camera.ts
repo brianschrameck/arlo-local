@@ -20,6 +20,8 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     private originalMedia?: FFmpegInput;
     private gstreamerPort?: number;
     private gstreamerKillTime?: number;
+    private isSnapshotEligible: boolean = false;
+    private cachedSnapshot?: ArrayBuffer;
 
     cameraSummary: CameraSummary;
     cameraStatus: CameraStatus;
@@ -35,6 +37,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         this.cameraStatus = cameraStatus;
         this.batteryLevel = this.cameraStatus.BatPercent;
         this.provider.updateDevice(this.nativeId, this.cameraStatus);
+        this.isSnapshotEligible = true;
     }
 
     onMotionDetected() {
@@ -53,16 +56,36 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
     // implement
     async takePicture(option?: PictureOptions): Promise<MediaObject> {
-        return;
+        // skip all processing if the camera is disabled
+        if (this.isCameraDisabled()) {
+            return;
+        }
+
+        this.console.debug('Requesting snapshot.');
+
+        if (this.isSnapshotEligible || this.isCameraPluggedIn()) {
+            const response = await this.provider.baseStationApiClient.postSnapshotRequest(this.nativeId);
+            if (response.result) {
+                this.console.debug('Request successful. Retrieving snapshot.');
+                const buffer = await this.provider.baseStationApiClient.getSnapshot(this.nativeId);
+                this.isSnapshotEligible = false;
+                this.cachedSnapshot = buffer;
+                return this.createMediaObject(buffer, 'image/jpeg');
+            } else {
+                this.console.error('Snapshot request failed.');
+            }
+        } else {
+            this.console.info('Skipping snapshot because camera is on battery and motion hasn\'t been detected or status hasn\'t been sent recently.')
+            return this.createMediaObject(this.cachedSnapshot, 'image/jpeg');
+        }
+    }
+
+    private isCameraPluggedIn(): boolean {
+        return ['QuickCharger', 'Regular'].includes(this.cameraStatus.ChargerTech);
     }
 
     // implement
     async getPictureOptions(): Promise<PictureOptions[]> {
-        return;
-    }
-
-    async takePictureThrottled(): Promise<MediaObject> {
-        // TODO: implement this
         return;
     }
 

@@ -228,7 +228,6 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
 class ArloCamera {
     cameraSummary: CameraSummary;
     cameraStatus: CameraStatus;
-
 }
 
 export { ArloCameraProvider as ArloCameraProvider };

@@ -51,7 +51,6 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
     // implement
     async takePicture(option?: PictureOptions): Promise<MediaObject> {
-        return;
         // skip all processing if the camera is disabled
         if (this.isCameraDisabled()) {
             return;
@@ -59,18 +58,16 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
         this.console.debug(`Requesting snapshot for ${this.nativeId}.`);
 
-        // if (this.isSnapshotEligible || this.isCameraPluggedIn()) {
-        if (this.isCameraPluggedIn()) {
+        if (this.isSnapshotEligible || this.isCameraPluggedIn()) {
             const response = await this.provider.baseStationApiClient.postSnapshotRequest(this.nativeId);
             if (response.result) {
                 this.console.debug(`Request successful. Retrieving snapshot for ${this.nativeId}.`);
                 const buffer = await this.provider.baseStationApiClient.getSnapshot(this.nativeId);
-                return this.createMediaObject(buffer, 'image/jpeg');
-                // if (buffer) {
-                //     this.isSnapshotEligible = false;
-                //     this.cachedSnapshot = Buffer.from(buffer);
-                //     return this.createMediaObject(buffer, 'image/jpeg');
-                // }
+                if (buffer) {
+                    this.isSnapshotEligible = false;
+                    this.cachedSnapshot = buffer;
+                    return this.createMediaObject(buffer, 'image/jpeg');
+                }
             } else {
                 this.console.error('Snapshot request failed.');
             }

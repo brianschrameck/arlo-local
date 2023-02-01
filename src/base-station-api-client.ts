@@ -43,10 +43,14 @@ export class BaseStationApiClient {
 
     public async getSnapshot(serialNumber: string): Promise<Buffer> {
         let buffer: Buffer;
-        while (!buffer) {
-            await sleep(1000);
+        let attempt = 0;
+        while (!buffer && attempt < 3) {
             console.info(`Requesting snapshot: ${serialNumber}`)
             buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
+            if (!buffer) {
+                await sleep(1000);
+            }
+            attempt++;
         }
         return buffer;
     }

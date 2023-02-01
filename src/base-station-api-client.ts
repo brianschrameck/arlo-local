@@ -37,12 +37,18 @@ export class BaseStationApiClient {
     }
 
     public async postSnapshotRequest(serialNumber: string): Promise<CameraResponse> {
-        const data = { url: `${this.baseUrl}/snapshot/${serialNumber}/temp.jpg` };
+        const data = { url: `${this.baseUrl}/snapshot/${serialNumber}/${serialNumber}.jpg` };
         return await this.sendRequest<CameraResponse>(`/camera/${serialNumber}/snapshot`, 'post', data);
     }
 
-    public async getSnapshot(serialNumber: string): Promise<ArrayBuffer> {
-        return await this.sendFileRequest<ArrayBuffer>(`/snapshot/${serialNumber}`);
+    public async getSnapshot(serialNumber: string): Promise<Buffer> {
+        let buffer: Buffer;
+        while (!buffer) {
+            await sleep(1000);
+            console.info(`Requesting snapshot: ${serialNumber}`)
+            buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
+        }
+        return buffer;
     }
 
     public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<CameraResponse> {
@@ -52,7 +58,6 @@ export class BaseStationApiClient {
 
     private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
         try {
-            await sleep(200);
             const response = await this.client.request<T>({ url, method, data })
             return response.data;
         } catch (error) {
@@ -60,14 +65,9 @@ export class BaseStationApiClient {
         }
     }
 
-    private async sendFileRequest<T>(url?: string, method?: Method, data?: any): Promise<ArrayBuffer> {
-        try {
-            await sleep(200);
-            const response = await this.client.request<any>({ url, method, data, responseType: 'arraybuffer' })
-            return Buffer.from(response.data, 'binary');
-        } catch (error: any | AxiosError) {
-            this.handleError(error);
-        }
+    private async sendFileRequest<T>(url?: string): Promise<Buffer> {
+        const response = await this.client.request<Buffer>({ url, responseType: 'arraybuffer' })
+        return response.data;
     }
 
     private handleError(error: AxiosError) {

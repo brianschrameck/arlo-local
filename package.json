@@ -19,8 +19,7 @@
       "scrypted-debug": "scrypted-debug",
       "scrypted-deploy": "scrypted-deploy",
       "scrypted-readme": "scrypted-readme",
-      "scrypted-package-json": "scrypted-package-json",
-      "test": "jest"
+      "scrypted-package-json": "scrypted-package-json"
    },
    "scrypted": {
       "name": "Arlo Local Camera Plugin",
@@ -40,13 +39,8 @@
       "@babel/core": "^7.20.12",
       "@babel/preset-env": "^7.20.2",
       "@babel/preset-typescript": "^7.18.6",
-      "@jest/globals": "^29.3.1",
       "@scrypted/common": "file:../../common",
-      "@scrypted/sdk": "file:../../sdk",
-      "@types/jest": "^29.2.6",
-      "babel-jest": "^29.3.1",
-      "jest": "^29.3.1",
-      "ts-jest": "^29.0.5"
+      "@scrypted/sdk": "file:../../sdk"
    },
    "dependencies": {
       "axios": "^1.2.3"

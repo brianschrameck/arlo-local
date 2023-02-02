@@ -140,6 +140,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         this.originalMedia = {
             url: `rtsp://${this.cameraSummary.ip}/live`,
             mediaStreamOptions: {
+                id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
                 ...options,
             },

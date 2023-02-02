@@ -46,11 +46,12 @@ export class BaseStationApiClient {
         let attempt = 0;
         while (!buffer && attempt < 3) {
             console.info(`Requesting snapshot: ${serialNumber}`)
-            buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
-            if (!buffer) {
+            try {
+                buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
+            } catch {
                 await sleep(1000);
+                attempt++;
             }
-            attempt++;
         }
         return buffer;
     }

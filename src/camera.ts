@@ -1,13 +1,13 @@
-import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, ScryptedDeviceBase, Setting, Settings, SettingValue, VideoCamera, ScryptedMimeTypes } from '@scrypted/sdk';
+import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, ScryptedDeviceBase, Setting, Settings, SettingValue, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 import { ArloCameraProvider } from './main';
 
 import { CameraSummary, CameraStatus } from './base-station-api-client';
-const { mediaManager } = sdk;
+const { systemManager, mediaManager } = sdk;
 
 const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
-const COOLDOWN_TIMEOUT = 11000; // milliseconds (leave a 1 second buffer for rebroadcast to call back)
-const DEFAULT_SENSOR_TIMEOUT = 30; // seconds
+const COOLDOWN_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
+const DEFAULT_SENSOR_TIMEOUT = 10; // seconds
 
 export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
     private motionTimeout?: NodeJS.Timeout;
@@ -23,6 +23,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         super(nativeId);
         this.cameraSummary = cameraSummary;
         this.cameraStatus = cameraStatus;
+        this.motionDetected = false;
         this.batteryLevel = cameraStatus.BatPercent;
     }
 
@@ -58,6 +59,31 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
 
         this.console.debug(`Requesting snapshot for ${this.nativeId}.`);
 
+        // if this stream is prebuffered, its safe to use the prebuffer to generate an image
+        try {
+            const realDevice = systemManager.getDeviceById<VideoCamera>(this.id);
+            const msos = await realDevice.getVideoStreamOptions();
+            let prebufferChannel = msos?.find(mso => mso.prebuffer);
+            if (prebufferChannel) {
+                prebufferChannel = prebufferChannel || {
+                    id: undefined,
+                };
+
+                const request = prebufferChannel as RequestMediaStreamOptions;
+                // specify the prebuffer based on the usage. events shouldn't request
+                // lengthy prebuffers as it may not contain the image it needs.
+                request.prebuffer = 500;
+                request.refresh = false;
+                this.console.log('snapshotting active prebuffer');
+                const vs = await realDevice.getVideoStream(request);
+                const buffer = await mediaManager.convertMediaObjectToBuffer(vs, 'image/jpeg');
+                return this.createMediaObject(buffer, 'image/jpeg');
+            }
+        }
+        catch (e) {
+        }
+
+        // otherwise, request a snapshot from the camera, if it's eligible
         if (this.isSnapshotEligible || this.isCameraPluggedIn()) {
             const response = await this.provider.baseStationApiClient.postSnapshotRequest(this.nativeId);
             if (response.result) {

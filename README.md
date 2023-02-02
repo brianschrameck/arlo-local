@@ -10,14 +10,14 @@ This plugin must be used in conjuction with the [Arlo Cam API](https://github.co
 * battery status (when on battery)
 * snapshots (as-requested when plugged in, rate-limited on battery to after motion is detected or after status update is received)
 * live video streaming
-* live audio support, including muting audio (bi-directional audio is not supported)
-* Arlo subscription-quality streams (higher bitrate!) without fees
+* live audio support, including muting audio
+* Arlo subscription-quality streams without fees or the cloud (higher bitrate and sub-second latency!)
 * supports all HomeKit Secure Video (HKSV) features including AI person, vehicle, animal, and package detection, face recognition, etc.; also reports battery status and camera information to HomeKit
 
 ## Future Features (maybe)
 
 * audio notifications
-* two-way audio support
+* bi-directional audio support/intercom
 * sensitivity and volume adjustments
 * arm and disarm
 * set charged and PIR sensor indicator preferences
@@ -198,7 +198,7 @@ You may also have to set the Wi-Fi to the same channel that the Base Station was
 
 An [alternative, more complex option](https://github.com/brianschrameck/arlo-cam-api#pairing-a-camera-to-your-own-basestation), if you don't want to use a hardware access point is to configure `hostapd` and `dhcpcd` to turn your Linux machine into an access point. You would then need to configure a static route between your main network where you run Scrypted and/or the Arlo Cam API, and the network subnet that the cameras would join. You could also run all of the software (Scrypted, Arlo Cam API, `hostapd`, `dhcpcd`) on a single machine.
 
-You can tell when things are working when you tail your API server logs and can see registration and status messages for your camera.
+After setting up your Wi-Fi network, unplug your Arlo Base Station and give the cameras a few minutes to reconnect. You can tell when things are working when you tail your API server logs and can see registration and status messages for your camera.
 
 ### Plugin Configuration
 
@@ -231,3 +231,5 @@ Things will break. This is not stable yet. These cameras were never meant to do 
 5. The live stream can be pretty jittery. Make sure you have VERY strong Wi-Fi coverage for the cameras.
 
 6. You can't control the cameras without using the REST API directly. They are defaulted to always "armed" which means they will always send a motion notification to Scrypted. Video quality is defaulted to "subscription".
+
+7. The camera streams have no authentication mechanism, and they are sent unencrypted over the wire. Use them only on a network you own and trust, as anybody could theoretically listen to the traffic and reconstruct the video by sniffing the packets.

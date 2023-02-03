@@ -44,7 +44,7 @@ Do not fill out your server information yet.
 
 Follow these steps in the [arlo-cam-api repository](https://github.com/brianschrameck/arlo-cam-api#readme) to configure your network for use with the cameras and create your fake Arlo Base Station.
 
-WARNING: this is tricky and taskes some Linux and networking knowledge.
+WARNING: this is tricky and takes some Linux and networking knowledge.
 
 ### Plugin Configuration
 

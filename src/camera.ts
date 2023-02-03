@@ -6,7 +6,7 @@ import { CameraSummary, CameraStatus } from './base-station-api-client';
 const { systemManager, mediaManager } = sdk;
 
 const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
-const COOLDOWN_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
+const STREAM_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
 const DEFAULT_SENSOR_TIMEOUT = 10; // seconds
 
 export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
@@ -181,7 +181,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             this.console.debug('stopping stream')
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
-        }, COOLDOWN_TIMEOUT);
+        }, STREAM_TIMEOUT);
     }
 
     /** Settings */

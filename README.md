@@ -64,11 +64,11 @@ If you wish, add the HomeKit plugin and pair your cameras to HomeKit secure vide
 
 ## Troubleshooting and Limitations
 
-Things will break. This is not stable yet. These cameras were never meant to do this and are fickle as hell. Here are some tips:
+Things will break. This is not stable yet. These cameras were never meant to do this and are fickle as hell. Some of these limitations may be able to be fixed in future updates, but here are some tips in the meantime:
 
 1. Don't try any of the other parsers as the cameras don't support TCP streams and the FFmpeg parser will cause the stream to crash within seconds, requiring you to reboot your camera.
 
-2. Try not to kill Scrypted processes; let it shut things down gracefully.
+2. Do not abruptly kill Scrypted processes. Don't run updates while your cameras are actively streaming. It is recommended to set all of the cameras to disabled and wait until they stop streaming (you would need to also disable prebuffer, this means) before doing any Rebroadcast/Prebuffer plugin updates. If you don't do the above, the camera will continue streaming even though there is nobody listening and it WILL kill your battery.
 
 3. If you have multiple Wi-Fi access points, the cameras tend to hold on to one. You may want to reboot your camera right next to the access point you want it to connect to. If you have the ability to modify the Minimum RSSI then you can also do that to try and force cameras onto the right access point. Or if you have the ability to lock a camera to an access point in your network software, that can work. However, like mentioned above, you may need to have whatever access points you want the cameras to use to all share the same Wi-Fi channel.
 
@@ -79,3 +79,5 @@ Things will break. This is not stable yet. These cameras were never meant to do 
 6. You can't control the cameras without using the REST API directly. They are defaulted to always "armed" which means they will always send a motion notification to Scrypted. Video quality is defaulted to "subscription".
 
 7. The camera streams have no authentication mechanism, and they are sent unencrypted over the wire. Use them only on a network you own and trust, as anybody could theoretically listen to the traffic and reconstruct the video by sniffing the packets.
+
+8. For some reason the cameras start streaming when switching power source, and Scrypted isn't handling this properly leading to the same issue of infinite streaming mentioned above. You may want to reboot the camera when plugging or unplugging to charge. Alternatively, disable them before power state changes as mentioned above.

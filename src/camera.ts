@@ -13,7 +13,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     private motionTimeout?: NodeJS.Timeout;
     private refreshTimeout?: NodeJS.Timeout;
     private originalMedia?: FFmpegInput;
-    private isSnapshotEligible: boolean = false;
+    private isSnapshotEligible: boolean = true;
     private cachedSnapshot?: ArrayBuffer;
 
     cameraSummary: CameraSummary;

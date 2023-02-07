@@ -1,15 +1,19 @@
 import { Device, DeviceDiscovery, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
+import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, CameraStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, AudioDoorbellStatus, RegisteredEvent } from './base-station-api-client';
+import { ArloDeviceBase } from './arlo-device-base';
+import { ArloAudioDoorbellDevice } from './audio-doorbell';
 import { ArloCameraDevice } from './camera';
-import { BaseStationApiClient, CameraSummary, MotionDetectedEvent, CameraStatus, StatusUpdatedEvent, WebhookEvent } from './base-station-api-client';
 
 const { deviceManager } = sdk;
 const MOTION_SLUG = 'motionDetected';
+const REGISTRATION_SLUG = 'registered';
 const STATUS_SLUG = 'statusUpdated';
+const BUTTON_PRESS_SLUG = 'buttonPressed';
 
-class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, DeviceDiscovery, Settings, HttpRequestHandler {
-    private arloCameras = new Map<string, ArloCamera>();
-    private arloCameraDevices = new Map<string, ArloCameraDevice>();
+class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, DeviceDiscovery, Settings, HttpRequestHandler {
+    private arloRawDevices = new Map<string, ArloRawDevice>();
+    private arloDevices = new Map<string, ArloDeviceBase>();
     baseStationApiClient?: BaseStationApiClient;
 
     constructor(nativeId?: string) {
@@ -28,20 +32,30 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
                 placeholder: 'http://192.168.1.100:5000',
                 type: 'string',
                 value: this.getArloHost()
-            },
-            {
+            }, {
+                title: 'Registration Webhook',
+                description: 'To get registrations from your devices (e.g. a new device gets added) adjust StatusUpdateWebHookUrl in arlo-cam-api\'s config.yaml file.',
+                type: 'string',
+                readonly: true,
+                value: await this.getRegistrationWebhookUrl(),
+            }, {
+                title: 'Status Update Webhook',
+                description: 'To get status updates from your devices (e.g. battery level) adjust StatusUpdateWebHookUrl in arlo-cam-api\'s config.yaml file.',
+                type: 'string',
+                readonly: true,
+                value: await this.getStatusUpdatedWebhookUrl(),
+            }, {
                 title: 'Motion Sensor Webhook',
                 description: 'To get motion alerts, adjust MotionRecordingWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
                 value: await this.getMotionDetectedWebhookUrl(),
-            },
-            {
-                title: 'Status Update Webhook',
-                description: 'To get status updates from your cameras (e.g. battery level) adjust StatusUpdateWebHookUrl in arlo-cam-api\'s config.yaml file.',
+            }, {
+                title: 'Button Press Webhook',
+                description: 'To get button press events from your doorbells, adjust ButtonPressWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
-                value: await this.getStatusUpdatedWebhookUrl(),
+                value: await this.getButtonPressedWebhookUrl(),
             }
         ];
     }
@@ -50,16 +64,28 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return this.storage.getItem('arloHost');
     }
 
-    private async getMotionDetectedWebhookUrl(): Promise<string> {
-        this.console.info(`getting ${MOTION_SLUG} webhook`)
+    private async getRegistrationWebhookUrl(): Promise<string> {
+        this.console.info(`getting ${REGISTRATION_SLUG} webhook`)
         const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
-        return `${webhookUrl}${MOTION_SLUG}`;
+        return `${webhookUrl}${REGISTRATION_SLUG}`;
     }
 
     private async getStatusUpdatedWebhookUrl(): Promise<string> {
         this.console.info(`getting ${STATUS_SLUG} webhook`)
         const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
         return `${webhookUrl}${STATUS_SLUG}`;
+    }
+
+    private async getMotionDetectedWebhookUrl(): Promise<string> {
+        this.console.info(`getting ${MOTION_SLUG} webhook`)
+        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
+        return `${webhookUrl}${MOTION_SLUG}`;
+    }
+
+    private async getButtonPressedWebhookUrl(): Promise<string> {
+        this.console.info(`getting ${BUTTON_PRESS_SLUG} webhook`)
+        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
+        return `${webhookUrl}${BUTTON_PRESS_SLUG}`;
     }
 
     async putSetting(key: string, value: SettingValue) {
@@ -79,11 +105,29 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
             } else {
                 return;
             }
+        } else if (request.url?.endsWith(REGISTRATION_SLUG)) {
+            const registeredEvent: RegisteredEvent = JSON.parse(request.body);
+            if (this.webhookEventIsValid(registeredEvent, response)) {
+                const registration = JSON.parse(registeredEvent.registration);
+                (await this.getDevice(registeredEvent.serial_number)).onRegistrationUpdated(registration);
+            } else {
+                return;
+            }
         } else if (request.url?.endsWith(STATUS_SLUG)) {
             const statusUpdatedEvent: StatusUpdatedEvent = JSON.parse(request.body);
-            const status = JSON.parse(statusUpdatedEvent.status);
             if (this.webhookEventIsValid(statusUpdatedEvent, response)) {
+                const status = JSON.parse(statusUpdatedEvent.status);
                 (await this.getDevice(statusUpdatedEvent.serial_number)).onStatusUpdated(status);
+            } else {
+                return;
+            }
+        } else if (request.url?.endsWith(BUTTON_PRESS_SLUG)) {
+            const buttonPressedEvent: ButtonPressedEvent = JSON.parse(request.body);
+            if (this.webhookEventIsValid(buttonPressedEvent, response)) {
+                const device = (await this.getDevice(buttonPressedEvent.serial_number))
+                if (device instanceof ArloAudioDoorbellDevice) {
+                    device.onButtonPressed(buttonPressedEvent.triggered);
+                }
             } else {
                 return;
             }
@@ -121,39 +165,48 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         }
 
         this.console.info("Discovering devices...")
-        this.arloCameras.clear();
-        this.arloCameraDevices.clear();
+        this.arloRawDevices.clear();
+        this.arloDevices.clear();
 
         const scryptedDevices: Device[] = [];
 
         this.baseStationApiClient = new BaseStationApiClient(`${arloHost}`);
-        let listCamerasResponse: CameraSummary[];
+        let listDevicesResponse: DeviceSummary[];
         try {
-            listCamerasResponse = await this.baseStationApiClient.listCameras();
-            if (listCamerasResponse.length === 0) {
-                this.console.warn('Connection to camera API succeeded, but no devices were returned.');
+            listDevicesResponse = await this.baseStationApiClient.listDevices();
+            if (listDevicesResponse.length === 0) {
+                this.console.warn('Connection to local Arlo device API succeeded, but no devices were returned.');
                 return;
             }
         } catch (error) {
-            this.console.error(`There was an issue connecting to your camera API. Please check your settings and try again. ${error}`);
+            this.console.error(`There was an issue connecting to your local Arlo device API. Please check your settings and try again. ${error}`);
             return;
         };
 
-        await Promise.allSettled(listCamerasResponse.map(async (cameraSummary: CameraSummary) => {
-            const serialNumber = cameraSummary.serial_number;
+        await Promise.allSettled(listDevicesResponse.map(async (deviceSummary: DeviceSummary) => {
+            const serialNumber = deviceSummary.serial_number;
 
+            let deviceRegistration: DeviceRegistration;
             try {
-                const cameraStatus = await this.baseStationApiClient.getCameraStatus(serialNumber);
-                this.console.debug(`Status retrieved for ${serialNumber}.`);
-
-                const arloCamera: ArloCamera = { cameraSummary, cameraStatus };
-                this.arloCameras.set(cameraSummary.serial_number, arloCamera);
-                scryptedDevices.push(this.createScryptedDevice(arloCamera));
-
-                this.console.info(`Discovered device ${arloCamera.cameraSummary.serial_number}`);
+                deviceRegistration = await this.baseStationApiClient.getRegistration(serialNumber);
+                this.console.debug(`Registration retrieved for ${serialNumber}.`);
             } catch (error) {
-                this.console.warn(`Status retrieval failed for ${serialNumber}; camera may not operate correctly. Error: ${error}`);
+                this.console.warn(`Registration retrieval failed for ${serialNumber}; device may not operate correctly. Error: ${error}`);
             }
+
+            let deviceStatus: DeviceStatus;
+            try {
+                deviceStatus = await this.baseStationApiClient.getStatus(serialNumber);
+                this.console.debug(`Status retrieved for ${serialNumber}.`);
+            } catch (error) {
+                this.console.warn(`Status retrieval failed for ${serialNumber}; device may not operate correctly. Error: ${error}`);
+            }
+
+            const arloRawDevice: ArloRawDevice = { deviceSummary, deviceRegistration, deviceStatus };
+            this.arloRawDevices.set(deviceSummary.serial_number, arloRawDevice);
+            scryptedDevices.push(this.createScryptedDevice(arloRawDevice));
+
+            this.console.info(`Discovered device ${arloRawDevice.deviceSummary.serial_number}`);
         }));
 
         await deviceManager.onDevicesChanged({
@@ -164,18 +217,20 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         this.console.log(`Discovered ${scryptedDevices.length} devices.`);
     }
 
-    createScryptedDevice(arloCamera: ArloCamera): Device {
+    createScryptedDevice(arloRawDevice: ArloRawDevice): Device {
+        const interfaces = ArloDeviceProvider.getDeviceInterfaces(arloRawDevice.deviceRegistration, arloRawDevice.deviceStatus);
+
         return {
-            name: arloCamera.cameraSummary.friendly_name,
-            nativeId: arloCamera.cameraSummary.serial_number,
-            type: ScryptedDeviceType.Camera,
-            interfaces: ArloCameraProvider.getDeviceInterfaces(arloCamera.cameraStatus),
+            name: arloRawDevice.deviceSummary.friendly_name,
+            nativeId: arloRawDevice.deviceSummary.serial_number,
+            type: interfaces.includes(ScryptedInterface.VideoCamera) ? ScryptedDeviceType.Camera : ScryptedDeviceType.Doorbell,
+            interfaces: interfaces,
             info: {
-                firmware: arloCamera.cameraStatus.SystemFirmwareVersion,
+                firmware: arloRawDevice.deviceStatus?.SystemFirmwareVersion,
                 manufacturer: 'Arlo Technologies, Inc.',
-                model: arloCamera.cameraStatus.UpdateSystemModelNumber,
-                serialNumber: arloCamera.cameraStatus.SystemSerialNumber,
-                version: arloCamera.cameraStatus.HardwareRevision,
+                model: arloRawDevice.deviceRegistration?.SystemModelNumber,
+                serialNumber: arloRawDevice.deviceStatus?.SystemSerialNumber,
+                version: arloRawDevice.deviceStatus?.HardwareRevision,
             },
             providerNativeId: this.nativeId,
         };
@@ -187,49 +242,93 @@ class ArloCameraProvider extends ScryptedDeviceBase implements DeviceProvider, D
         // Does nothing.
     }
 
-    async getDevice(nativeId: string): Promise<ArloCameraDevice> {
-        if (this.arloCameraDevices.has(nativeId))
-            return this.arloCameraDevices.get(nativeId);
-        const arloCamera = this.arloCameras.get(nativeId);
-        if (!arloCamera)
-            throw new Error('camera not found?');
-        const ret = new ArloCameraDevice(this, nativeId, arloCamera.cameraSummary, arloCamera.cameraStatus);
-        this.arloCameraDevices.set(nativeId, ret);
-        return ret;
+    async getDevice(nativeId: string): Promise<ArloDeviceBase> {
+        if (this.arloDevices.has(nativeId))
+            return this.arloDevices.get(nativeId);
+        const arloRawDevice = this.arloRawDevices.get(nativeId);
+        if (!arloRawDevice)
+            throw new Error('device not found?');
+
+        const deviceSummary = arloRawDevice.deviceSummary;
+        const deviceRegistration = arloRawDevice.deviceRegistration;
+        const deviceStatus = arloRawDevice.deviceStatus;
+
+        const interfaces = ArloDeviceProvider.getDeviceInterfaces(deviceRegistration, deviceStatus);
+        let retDevice: ArloDeviceBase;
+        if (interfaces.includes(ScryptedInterface.VideoCamera)) {
+            retDevice = new ArloCameraDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
+        } else if (interfaces.includes(ScryptedInterface.BinarySensor)) {
+            retDevice = new ArloAudioDoorbellDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
+        } else {
+            throw new Error('unknown device type');
+        }
+
+        this.arloDevices.set(nativeId, retDevice);
+        return retDevice;
     }
 
-    async updateDevice(nativeId: string, cameraStatus: CameraStatus) {
-        const arloCamera = this.arloCameras.get(nativeId);
-        arloCamera.cameraStatus = cameraStatus;
+    async updateDeviceRegistration(nativeId: string, deviceRegistration: DeviceRegistration) {
+        const arloCamera = this.arloRawDevices.get(nativeId);
+        arloCamera.deviceRegistration = deviceRegistration;
         const device = this.createScryptedDevice(arloCamera);
         deviceManager.onDeviceDiscovered(device);
         this.console.info(`Updated device interfaces to: ${device.interfaces}`)
     }
 
-    private static getDeviceInterfaces(cameraStatus: CameraStatus): string[] {
+    async updateDeviceStatus(nativeId: string, deviceStatus: DeviceStatus) {
+        const arloCamera = this.arloRawDevices.get(nativeId);
+        arloCamera.deviceStatus = deviceStatus;
+        const device = this.createScryptedDevice(arloCamera);
+        deviceManager.onDeviceDiscovered(device);
+        this.console.info(`Updated device interfaces to: ${device.interfaces}`)
+    }
+
+    private static getDeviceInterfaces(deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus): string[] {
         let interfaces = [
-            ScryptedInterface.Camera,
-            ScryptedInterface.MotionSensor,
-            ScryptedInterface.Settings,
-            ScryptedInterface.VideoCamera,
+            ScryptedInterface.Settings
         ];
 
-        // only add the Battery interface if we are not on power
-        if (!['QuickCharger', 'Regular'].includes(cameraStatus.ChargerTech)) {
-            interfaces.push(ScryptedInterface.Battery);
-        } else {
-            console.info('Ignoring Battery interface because camera is plugged in.');
+        for (const capability of deviceRegistration?.Capabilities) {
+            switch (capability) {
+                case 'H.264Streaming':
+                    interfaces.push(ScryptedInterface.VideoCamera);
+                    break;
+                case 'BatteryLevel':
+                    const chargerTech = (deviceStatus as CameraStatus)?.ChargerTech;
+                    // only add the Battery interface if we are not on power
+                    if (chargerTech === undefined ||
+                        (chargerTech !== undefined && !['QuickCharger', 'Regular'].includes(chargerTech))) {
+                        interfaces.push(ScryptedInterface.Battery);
+                    } else {
+                        console.info('Ignoring Battery interface because camera is plugged in.');
+                    }
+                    break;
+                case 'PirMotion':
+                    interfaces.push(ScryptedInterface.MotionSensor);
+                    break;
+                case 'JPEGSnapshot':
+                    interfaces.push(ScryptedInterface.Camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // sadly, Arlo doesn't report a specific capability for doorbells, so we check if the status includes a count of button press events
+        if ((deviceStatus as AudioDoorbellStatus)?.ButtonEvents !== undefined) {
+            interfaces.push(ScryptedInterface.BinarySensor);
         }
 
         return interfaces;
     }
 }
 
-class ArloCamera {
-    cameraSummary: CameraSummary;
-    cameraStatus: CameraStatus;
+class ArloRawDevice {
+    deviceSummary: DeviceSummary;
+    deviceRegistration?: DeviceRegistration;
+    deviceStatus?: DeviceStatus;
 }
 
-export { ArloCameraProvider as ArloCameraProvider };
+export { ArloDeviceProvider };
 
-export default new ArloCameraProvider();
+export default new ArloDeviceProvider();

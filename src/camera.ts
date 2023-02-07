@@ -1,51 +1,33 @@
-import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, ScryptedDeviceBase, Setting, Settings, SettingValue, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions } from '@scrypted/sdk';
+import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, Settings, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import { ArloCameraProvider } from './main';
 
-import { CameraSummary, CameraStatus } from './base-station-api-client';
+import { CameraStatus, DeviceStatus } from './base-station-api-client';
+import { ArloDeviceBase } from './arlo-device-base';
 const { systemManager, mediaManager } = sdk;
 
 const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
 const STREAM_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
-const DEFAULT_SENSOR_TIMEOUT = 10; // seconds
 
-export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
-    private motionTimeout?: NodeJS.Timeout;
+export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
     private refreshTimeout?: NodeJS.Timeout;
     private originalMedia?: FFmpegInput;
     private isSnapshotEligible: boolean = true;
     private cachedSnapshot?: ArrayBuffer;
 
-    cameraSummary: CameraSummary;
-    cameraStatus: CameraStatus;
-
-    constructor(public provider: ArloCameraProvider, nativeId: string, cameraSummary: CameraSummary, cameraStatus: CameraStatus) {
-        super(nativeId);
-        this.cameraSummary = cameraSummary;
-        this.cameraStatus = cameraStatus;
-        this.motionDetected = false;
-        this.batteryLevel = cameraStatus.BatPercent;
-    }
-
-    onStatusUpdated(cameraStatus: CameraStatus) {
-        this.cameraStatus = cameraStatus;
-        this.batteryLevel = this.cameraStatus.BatPercent;
-        this.provider.updateDevice(this.nativeId, this.cameraStatus);
+    onStatusUpdated(deviceStatus: DeviceStatus) {
+        this.deviceStatus = deviceStatus;
+        this.batteryLevel = this.deviceStatus.BatPercent;
+        this.provider.updateDeviceStatus(this.nativeId, this.deviceStatus);
         this.isSnapshotEligible = true;
     }
 
     onMotionDetected() {
+        if (this.isDeviceDisabled()) {
+            return;
+        }
         this.isSnapshotEligible = true;
         this.takePicture();
-        this.motionDetected = true;
-        this.resetMotionTimeout();
-    }
-
-    resetMotionTimeout() {
-        clearTimeout(this.motionTimeout);
-        this.motionTimeout = setTimeout(() => {
-            this.motionDetected = false;
-        }, this.getMotionSensorTimeout() * 1000);
+        super.onMotionDetected();
     }
 
     /** Camera */
@@ -53,7 +35,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     // implement
     async takePicture(option?: PictureOptions): Promise<MediaObject> {
         // skip all processing if the camera is disabled
-        if (this.isCameraDisabled()) {
+        if (this.isDeviceDisabled()) {
             return;
         }
 
@@ -104,7 +86,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     }
 
     private isCameraPluggedIn(): boolean {
-        return ['QuickCharger', 'Regular'].includes(this.cameraStatus.ChargerTech);
+        return ['QuickCharger', 'Regular'].includes((this.deviceStatus as CameraStatus).ChargerTech);
     }
 
     // implement
@@ -133,7 +115,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
     // implement
     async getVideoStream(options?: ResponseMediaStreamOptions): Promise<MediaObject> {
         // skip all processing if the camera is disabled
-        if (this.isCameraDisabled()) {
+        if (this.isDeviceDisabled()) {
             return;
         }
 
@@ -164,7 +146,7 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
         this.resetStreamTimeout();
 
         this.originalMedia = {
-            url: `rtsp://${this.cameraSummary.ip}/live`,
+            url: `rtsp://${this.deviceSummary.ip}/live`,
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
@@ -182,51 +164,5 @@ export class ArloCameraDevice extends ScryptedDeviceBase implements Battery, Cam
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
         }, STREAM_TIMEOUT);
-    }
-
-    /** Settings */
-
-    // implement
-    async getSettings(): Promise<Setting[]> {
-        return [
-            {
-                key: 'motionSensorTimeout',
-                title: 'Motion Sensor Timeout',
-                type: 'integer',
-                value: this.getMotionSensorTimeout(),
-                description: 'Time to wait in seconds before clearing the motion detected state.',
-            },
-            {
-                key: 'isAudioDisabled',
-                title: 'No Audio',
-                description: 'Enable this setting if the camera does not have audio or to mute audio.',
-                type: 'boolean',
-                value: (this.isAudioDisabled()).toString(),
-            },
-            {
-                key: 'isCameraDisabled',
-                title: 'Disable Camera',
-                description: 'Enable this setting if you want to disable this camera. All video processing will be disabled.',
-                type: 'boolean',
-                value: (this.isCameraDisabled()).toString(),
-            }
-        ];
-    }
-
-    // implement
-    async putSetting(key: string, value: SettingValue) {
-        this.storage.setItem(key, value.toString());
-    }
-
-    getMotionSensorTimeout() {
-        return parseInt(this.storage.getItem('motionSensorTimeout')) || DEFAULT_SENSOR_TIMEOUT;
-    }
-
-    isAudioDisabled() {
-        return this.storage.getItem('isAudioDisabled') === 'true' || this.cameraStatus.UpdateSystemModelNumber === 'VMC3030';
-    }
-
-    isCameraDisabled() {
-        return this.storage.getItem('isCameraDisabled') === 'true';
     }
 }

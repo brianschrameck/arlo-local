@@ -126,7 +126,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
             if (this.webhookEventIsValid(buttonPressedEvent, response)) {
                 const device = (await this.getDevice(buttonPressedEvent.serial_number))
                 if (device instanceof ArloAudioDoorbellDevice) {
-                    device.onButtonPressed(buttonPressedEvent.triggered);
+                    device.onButtonPressed(buttonPressedEvent.triggered.toLowerCase() === 'true');
                 }
             } else {
                 return;
@@ -223,7 +223,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return {
             name: arloRawDevice.deviceSummary.friendly_name,
             nativeId: arloRawDevice.deviceSummary.serial_number,
-            type: interfaces.includes(ScryptedInterface.VideoCamera) ? ScryptedDeviceType.Camera : ScryptedDeviceType.Doorbell,
+            type: interfaces.includes(ScryptedInterface.VideoCamera) ? ScryptedDeviceType.Camera : ScryptedDeviceType.Sensor,
             interfaces: interfaces,
             info: {
                 firmware: arloRawDevice.deviceStatus?.SystemFirmwareVersion,
@@ -259,6 +259,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
             retDevice = new ArloCameraDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
         } else if (interfaces.includes(ScryptedInterface.BinarySensor)) {
             retDevice = new ArloAudioDoorbellDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
+            this.console.log('returning doorbell device with interfaces: ' + retDevice.interfaces);
         } else {
             throw new Error('unknown device type');
         }

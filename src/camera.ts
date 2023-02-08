@@ -15,9 +15,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
     private cachedSnapshot?: ArrayBuffer;
 
     onStatusUpdated(deviceStatus: DeviceStatus) {
-        this.deviceStatus = deviceStatus;
-        this.batteryLevel = this.deviceStatus.BatPercent;
-        this.provider.updateDeviceStatus(this.nativeId, this.deviceStatus);
+        super.onStatusUpdated(deviceStatus);
         this.isSnapshotEligible = true;
     }
 

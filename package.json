@@ -22,7 +22,7 @@
       "scrypted-package-json": "scrypted-package-json"
    },
    "scrypted": {
-      "name": "Arlo Local Camera Plugin",
+      "name": "Arlo Local Device Plugin",
       "type": "DeviceProvider",
       "interfaces": [
          "Settings",

@@ -123,7 +123,7 @@ export interface DeviceStatus {
 
 export interface AudioDoorbellStatus extends DeviceStatus {
     ButtonEvents: number,
-    Hibernate: boolean,
+    Hibernate: string, // boolean string
     WifiCountryDetails: string,
     WifiCountryRegion: number
 }
@@ -171,7 +171,7 @@ export interface DeviceRegistration {
     InterfaceVersion: number,
     LogFrequency: number,
     SignalStrengthIndicator: number,
-    Sync: boolean,
+    Sync: string, // boolean string
     SystemFirmwareVersion: string,
     SystemModelNumber: string,
     SystemSerialNumber: string,
@@ -223,5 +223,5 @@ export interface StatusUpdatedEvent extends WebhookEvent {
 }
 
 export interface ButtonPressedEvent extends WebhookEvent {
-    triggered: boolean
+    triggered: string // boolean string
 }

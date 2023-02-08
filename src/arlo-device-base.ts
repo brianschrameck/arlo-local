@@ -3,7 +3,7 @@ import { ArloDeviceProvider } from './main';
 
 import { DeviceSummary, DeviceStatus, DeviceRegistration } from './base-station-api-client';
 
-const DEFAULT_SENSOR_TIMEOUT = 10; // seconds
+const DEFAULT_MOTION_TIMEOUT = 10; // seconds
 
 export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, MotionSensor, Settings {
     motionTimeout?: NodeJS.Timeout;
@@ -31,6 +31,8 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
         this.batteryLevel = this.deviceStatus.BatPercent;
         this.provider.updateDeviceStatus(this.nativeId, this.deviceStatus);
     }
+
+    /** MotionSensor */
 
     onMotionDetected() {
         this.motionDetected = true;
@@ -77,7 +79,7 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
     }
 
     getMotionSensorTimeout() {
-        return parseInt(this.storage.getItem('motionSensorTimeout')) || DEFAULT_SENSOR_TIMEOUT;
+        return parseInt(this.storage.getItem('motionSensorTimeout')) || DEFAULT_MOTION_TIMEOUT;
     }
 
     isAudioDisabled() {

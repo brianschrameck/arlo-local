@@ -144,7 +144,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
         this.resetStreamTimeout();
 
         this.originalMedia = {
-            url: `rtsp://${this.deviceSummary.ip}/live`,
+            url: `rtsp://${this.deviceSummary.ip}/live`, // TODO: use port 555 for 4k cameras
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,

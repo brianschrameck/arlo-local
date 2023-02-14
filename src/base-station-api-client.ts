@@ -45,12 +45,14 @@ export class BaseStationApiClient {
         let buffer: Buffer;
         let attempt = 0;
         while (!buffer && attempt < 3) {
-            console.info(`Requesting snapshot: ${serialNumber}`)
+            console.info(`${serialNumber}: requesting snapshot`)
             try {
                 buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
+                console.debug(`${serialNumber}: snapshot retrieval succeeded on attempt ${attempt + 1}`);
             } catch {
                 await sleep(1000);
                 attempt++;
+                console.error(`${serialNumber}: snapshot retrieval attempt ${attempt} failed`);
             }
         }
         return buffer;

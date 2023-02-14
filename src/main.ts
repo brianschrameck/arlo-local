@@ -1,6 +1,6 @@
 import { Device, DeviceDiscovery, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, CameraStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, AudioDoorbellStatus, RegisteredEvent } from './base-station-api-client';
+import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, AudioDoorbellStatus, RegisteredEvent } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
 import { ArloAudioDoorbellDevice } from './audio-doorbell';
 import { ArloCameraDevice } from './camera';
@@ -268,22 +268,6 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return retDevice;
     }
 
-    async updateDeviceRegistration(nativeId: string, deviceRegistration: DeviceRegistration) {
-        const arloCamera = this.arloRawDevices.get(nativeId);
-        arloCamera.deviceRegistration = deviceRegistration;
-        const device = this.createScryptedDevice(arloCamera);
-        deviceManager.onDeviceDiscovered(device);
-        this.console.info(`Updated device interfaces to: ${device.interfaces}`)
-    }
-
-    async updateDeviceStatus(nativeId: string, deviceStatus: DeviceStatus) {
-        const arloCamera = this.arloRawDevices.get(nativeId);
-        arloCamera.deviceStatus = deviceStatus;
-        const device = this.createScryptedDevice(arloCamera);
-        deviceManager.onDeviceDiscovered(device);
-        this.console.info(`Updated device interfaces to: ${device.interfaces}`)
-    }
-
     private static getDeviceInterfaces(deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus): string[] {
         let interfaces = [
             ScryptedInterface.Settings
@@ -295,14 +279,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
                     interfaces.push(ScryptedInterface.VideoCamera);
                     break;
                 case 'BatteryLevel':
-                    const chargerTech = (deviceStatus as CameraStatus)?.ChargerTech;
-                    // only add the Battery interface if we are not on power
-                    if (chargerTech === undefined ||
-                        (chargerTech !== undefined && !['QuickCharger', 'Regular'].includes(chargerTech))) {
-                        interfaces.push(ScryptedInterface.Battery);
-                    } else {
-                        console.info('Ignoring Battery interface because camera is plugged in.');
-                    }
+                    interfaces.push(ScryptedInterface.Battery);
                     break;
                 case 'PirMotion':
                     interfaces.push(ScryptedInterface.MotionSensor);

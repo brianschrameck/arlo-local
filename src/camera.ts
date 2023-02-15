@@ -46,7 +46,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             return;
         }
 
-        while(this.snapshotInProgress) {
+        while (this.snapshotInProgress) {
             await sleep(1000);
         }
 
@@ -125,6 +125,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             audio: this.isAudioDisabled() ? null : {
                 codec: 'aac'
             },
+            allowBatteryPrebuffer: this.externallyPowered
         }];
     }
 

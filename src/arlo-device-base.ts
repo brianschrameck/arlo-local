@@ -10,14 +10,14 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
     deviceSummary: DeviceSummary;
     deviceRegistration: DeviceRegistration;
     deviceStatus: DeviceStatus;
+    externallyPowered: boolean = false;
 
     constructor(public provider: ArloDeviceProvider, nativeId: string, deviceSummary: DeviceSummary, deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus) {
         super(nativeId);
-        this.deviceSummary = deviceSummary;
-        this.deviceRegistration = deviceRegistration;
-        this.deviceStatus = deviceStatus;
         this.motionDetected = false;
-        this.batteryLevel = deviceStatus.BatPercent;
+        this.deviceSummary = deviceSummary;
+        this.onRegistrationUpdated(deviceRegistration);
+        this.onStatusUpdated(deviceStatus)
     }
 
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
@@ -30,7 +30,7 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
         this.batteryLevel = this.deviceStatus.BatPercent;
         // if the charger tech is present and includes QuickCharger or Regular, then we are externally powered
         const chargerTech = (this.deviceStatus as CameraStatus)?.ChargerTech;
-        this.externallyPowered = chargerTech !== undefined && ['QuickCharger', 'Regular'].includes(chargerTech);
+        this.externallyPowered = chargerTech && ['QuickCharger', 'Regular'].includes(chargerTech);
     }
 
     /** MotionSensor */

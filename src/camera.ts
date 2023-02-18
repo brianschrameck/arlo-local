@@ -1,4 +1,4 @@
-import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, Settings, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions } from '@scrypted/sdk';
+import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, Settings, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions, Setting, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 
 import { DeviceRegistration, DeviceStatus } from './base-station-api-client';
@@ -19,6 +19,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
     // override
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
         super.onRegistrationUpdated(deviceRegistration);
+        this.provider.baseStationApiClient.postQuality(this.nativeId, this.videoQuality());
         this.isSnapshotEligible = true;
     }
 
@@ -125,7 +126,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             audio: this.isAudioDisabled() ? null : {
                 codec: 'aac'
             },
-            allowBatteryPrebuffer: this.externallyPowered
+            allowBatteryPrebuffer: this.allowBatteryPrebuffer() && this.externallyPowered
         }];
     }
 
@@ -181,5 +182,46 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
         }, STREAM_TIMEOUT);
+    }
+
+    /** Settings */
+
+    // override
+    async getSettings(): Promise<Setting[]> {
+        let settings = await super.getSettings();
+        return settings.concat([
+            {
+                key: 'allowBatteryPrebuffer',
+                title: 'Allow Prebuffer When Charging',
+                description: 'Enable this setting if you want to allow prebuffering when the camera is charging the battery.',
+                type: 'boolean',
+                value: (this.allowBatteryPrebuffer()).toString(),
+            },
+            {
+                key: 'videoQuality',
+                title: 'Video Quality',
+                description: 'Low through Insane. No promises that Insane will work.',
+                type: 'string',
+                choices: ['Low', 'Medium', 'High', 'Subscription', 'Insane'],
+                value: this.videoQuality(),
+            },
+        ]);
+    }
+
+    // implement
+    async putSetting(key: string, value: SettingValue) {
+        await super.putSetting(key, value);
+
+        if (key === 'videoQuality') {
+            this.provider.baseStationApiClient.postQuality(this.nativeId, this.videoQuality());
+        }
+    }
+
+    allowBatteryPrebuffer(): boolean {
+        return this.storage.getItem('allowBatteryPrebuffer') === 'true';
+    }
+
+    videoQuality(): string {
+        return this.storage.getItem('videoQuality') || 'Subscription';
     }
 }

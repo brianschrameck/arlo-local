@@ -63,6 +63,16 @@ export class BaseStationApiClient {
         return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/userstreamactive`, 'post', data);
     }
 
+    public async postArm(serialNumber: string, pirTargetState: string, pirStartSensitivity: number) {
+        const data = { PIRTargetState: pirTargetState, PIRStartSensitivity: pirStartSensitivity };
+        return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/arm `, 'post', data);
+    }
+
+    public async postQuality(serialNumber: string, quality: string) {
+        const data = { quality: quality };
+        return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/quality `, 'post', data);
+    }
+
     private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
         try {
             const response = await this.client.request<T>({ url, method, data })

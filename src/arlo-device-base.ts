@@ -23,6 +23,7 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
         this.deviceRegistration = deviceRegistration;
         this.batteryLevel = this.deviceRegistration.BatPercent;
+        this.provider.baseStationApiClient.postArm(this.nativeId, this.pirTargetState(), this.pirStartSensitivity());
     }
 
     onStatusUpdated(deviceStatus: DeviceStatus) {
@@ -70,24 +71,52 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
                 description: 'Enable this setting if you want to disable this device. All motion and video processing will be disabled.',
                 type: 'boolean',
                 value: (this.isDeviceDisabled()).toString(),
-            }
+            },
+            {
+                key: 'pirTargetState',
+                title: 'PIR State',
+                description: 'Arm or disarm the PIR motion sensor. No motion notifications when disarmed.',
+                type: 'string',
+                choices: ['Armed', 'Disarmed'],
+                value: this.pirTargetState(),
+            },
+            {
+                key: 'pirStartSensitivity',
+                title: 'PIR Sensitivity',
+                description: 'The sensitivity of the PIR motion sensor, from 1 (lowest) to 100 (highest).',
+                type: 'integer',
+                value: this.pirStartSensitivity(),
+                range: [1, 100]
+            },
         ];
     }
 
     // implement
     async putSetting(key: string, value: SettingValue) {
         this.storage.setItem(key, value.toString());
+
+        if (key === 'pirTargetState' || key === 'pirStartSensitivity') {
+            this.provider.baseStationApiClient.postArm(this.nativeId, this.pirTargetState(), this.pirStartSensitivity());
+        }
     }
 
-    getMotionSensorTimeout() {
+    getMotionSensorTimeout(): number {
         return parseInt(this.storage.getItem('motionSensorTimeout')) || DEFAULT_MOTION_TIMEOUT;
     }
 
-    isAudioDisabled() {
+    isAudioDisabled(): boolean {
         return this.storage.getItem('isAudioDisabled') === 'true' || this.deviceRegistration.SystemModelNumber === 'VMC3030';
     }
 
-    isDeviceDisabled() {
+    isDeviceDisabled(): boolean {
         return this.storage.getItem('isDeviceDisabled') === 'true';
+    }
+
+    pirTargetState(): string {
+        return this.storage.getItem('pirTargetState') || 'Armed';
+    }
+
+    pirStartSensitivity(): number {
+        return parseInt(this.storage.getItem('pirStartSensitivity')) || 80;
     }
 }

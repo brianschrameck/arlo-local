@@ -1,4 +1,4 @@
-import { Battery, Camera, FFmpegInput, MediaObject, MotionSensor, PictureOptions, ResponseMediaStreamOptions, Settings, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions } from '@scrypted/sdk';
+import { Camera, FFmpegInput, MediaObject, PictureOptions, ResponseMediaStreamOptions, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions, Setting } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 
 import { DeviceRegistration, DeviceStatus } from './base-station-api-client';
@@ -9,7 +9,7 @@ const { systemManager, mediaManager } = sdk;
 const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
 const STREAM_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
 
-export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera, MotionSensor, Settings, VideoCamera {
+export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCamera {
     private refreshTimeout?: NodeJS.Timeout;
     private originalMedia?: FFmpegInput;
     private isSnapshotEligible: boolean = true;
@@ -125,7 +125,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             audio: this.isAudioDisabled() ? null : {
                 codec: 'aac'
             },
-            allowBatteryPrebuffer: this.externallyPowered
+            allowBatteryPrebuffer: this.allowBatteryPrebuffer() && this.externallyPowered
         }];
     }
 
@@ -181,5 +181,25 @@ export class ArloCameraDevice extends ArloDeviceBase implements Battery, Camera,
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
         }, STREAM_TIMEOUT);
+    }
+
+    /** Settings */
+
+    // override
+    async getSettings(): Promise<Setting[]> {
+        let settings = await super.getSettings();
+        return settings.concat([
+            {
+                key: 'allowBatteryPrebuffer',
+                title: 'Allow Prebuffer When Charging',
+                description: 'Enable this setting if you want to allow prebuffering when the camera is charging the battery.',
+                type: 'boolean',
+                value: (this.allowBatteryPrebuffer()).toString(),
+            },
+        ]);
+    }
+
+    allowBatteryPrebuffer(): boolean {
+        return this.storage.getItem('allowBatteryPrebuffer') === 'true';
     }
 }

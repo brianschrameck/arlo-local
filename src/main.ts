@@ -37,25 +37,25 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
                 description: 'To get registrations from your devices (e.g. a new device gets added) adjust StatusUpdateWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
-                value: await this.getRegistrationWebhookUrl(),
+                value: await this.getWebhookUrl(REGISTRATION_SLUG),
             }, {
                 title: 'Status Update Webhook',
                 description: 'To get status updates from your devices (e.g. battery level) adjust StatusUpdateWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
-                value: await this.getStatusUpdatedWebhookUrl(),
+                value: await this.getWebhookUrl(STATUS_SLUG),
             }, {
                 title: 'Motion Sensor Webhook',
                 description: 'To get motion alerts, adjust MotionRecordingWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
-                value: await this.getMotionDetectedWebhookUrl(),
+                value: await this.getWebhookUrl(MOTION_SLUG),
             }, {
                 title: 'Button Press Webhook',
                 description: 'To get button press events from your doorbells, adjust ButtonPressWebHookUrl in arlo-cam-api\'s config.yaml file.',
                 type: 'string',
                 readonly: true,
-                value: await this.getButtonPressedWebhookUrl(),
+                value: await this.getWebhookUrl(BUTTON_PRESS_SLUG),
             }
         ];
     }
@@ -64,28 +64,10 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return this.storage.getItem('arloHost');
     }
 
-    private async getRegistrationWebhookUrl(): Promise<string> {
-        this.console.info(`getting ${REGISTRATION_SLUG} webhook`)
+    private async getWebhookUrl(slug: string): Promise<string> {
+        this.console.info(`getting ${slug} webhook`)
         const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
-        return `${webhookUrl}${REGISTRATION_SLUG}`;
-    }
-
-    private async getStatusUpdatedWebhookUrl(): Promise<string> {
-        this.console.info(`getting ${STATUS_SLUG} webhook`)
-        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
-        return `${webhookUrl}${STATUS_SLUG}`;
-    }
-
-    private async getMotionDetectedWebhookUrl(): Promise<string> {
-        this.console.info(`getting ${MOTION_SLUG} webhook`)
-        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
-        return `${webhookUrl}${MOTION_SLUG}`;
-    }
-
-    private async getButtonPressedWebhookUrl(): Promise<string> {
-        this.console.info(`getting ${BUTTON_PRESS_SLUG} webhook`)
-        const webhookUrl = await sdk.endpointManager.getLocalEndpoint(this.nativeId, { insecure: true, public: true });
-        return `${webhookUrl}${BUTTON_PRESS_SLUG}`;
+        return `${webhookUrl}${slug}`;
     }
 
     async putSetting(key: string, value: SettingValue) {

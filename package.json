@@ -1,6 +1,6 @@
 {
    "name": "@scrypted/arlo-local",
-   "version": "0.2.1",
+   "version": "0.3.0",
    "description": "Arlo Local Plugin for Scrypted",
    "keywords": [
       "scrypted",
@@ -27,7 +27,6 @@
       "interfaces": [
          "Settings",
          "DeviceProvider",
-         "DeviceDiscovery",
          "HttpRequestHandler"
       ],
       "pluginDependencies": [

@@ -1,4 +1,4 @@
-import { Device, DeviceDiscovery, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
+import { Device, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
 import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, AudioDoorbellStatus, RegisteredEvent } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
@@ -11,7 +11,7 @@ const REGISTRATION_SLUG = 'registered';
 const STATUS_SLUG = 'statusUpdated';
 const BUTTON_PRESS_SLUG = 'buttonPressed';
 
-class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, DeviceDiscovery, Settings, HttpRequestHandler {
+class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, Settings, HttpRequestHandler {
     private arloRawDevices = new Map<string, ArloRawDevice>();
     private arloDevices = new Map<string, ArloDeviceBase>();
     baseStationApiClient?: BaseStationApiClient;
@@ -23,6 +23,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
 
     /** Settings */
 
+    // implement
     async getSettings(): Promise<Setting[]> {
         return [
             {
@@ -70,6 +71,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return `${webhookUrl}${slug}`;
     }
 
+    // implement
     async putSetting(key: string, value: SettingValue) {
         this.storage.setItem(key, value.toString());
         await this.discoverDevices();
@@ -77,6 +79,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
 
     /** HttpRequestHandler */
 
+    // implement
     async onRequest(request: HttpRequest, response: HttpResponse): Promise<void> {
         this.console.info(`Received webhook request: ${request.body}`);
 
@@ -137,9 +140,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
         return true;
     }
 
-    /** DeviceDiscovery */
-
-    async discoverDevices(duration?: number) {
+    async discoverDevices() {
         const arloHost = this.getArloHost();
         if (!arloHost) {
             this.console.log("Enter API host information in the settings to discover your devices.");
@@ -220,10 +221,12 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, D
 
     /** DeviceProvider */
 
+    // implement
     async releaseDevice(id: string, nativeId: string): Promise<void> {
         // Does nothing.
     }
 
+    // implement
     async getDevice(nativeId: string): Promise<ArloDeviceBase> {
         if (this.arloDevices.has(nativeId))
             return this.arloDevices.get(nativeId);

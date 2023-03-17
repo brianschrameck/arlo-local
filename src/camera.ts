@@ -162,8 +162,10 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         // reset the timeout and return the new media object
         this.resetStreamTimeout();
 
+        const preferredUrl = this.provider.getUseHostnames() ? this.deviceSummary.hostname : this.deviceSummary.ip;
+
         this.originalMedia = {
-            url: `rtsp://${this.deviceSummary.ip}/live`, // TODO: use port 555 for 4k cameras
+            url: `rtsp://${preferredUrl}/live`, // TODO: use port 555 for 4k cameras
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
@@ -195,7 +197,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
                 description: 'Enable this setting if you want to allow prebuffering when the camera is charging the battery.',
                 type: 'boolean',
                 value: (this.allowBatteryPrebuffer()).toString(),
-            },
+            }
         ]);
     }
 

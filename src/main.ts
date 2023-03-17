@@ -57,12 +57,23 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
                 type: 'string',
                 readonly: true,
                 value: await this.getWebhookUrl(BUTTON_PRESS_SLUG),
+            },
+            {
+                key: 'useHostnames',
+                title: 'Use Hostnames For Devices',
+                description: "Enable this setting if you want to use device hostnames instead of IP addresses when communicating with devices.",
+                type: 'boolean',
+                value: this.getUseHostnames(),
             }
         ];
     }
 
     private getArloHost(): string {
         return this.storage.getItem('arloHost');
+    }
+
+    public getUseHostnames(): boolean {
+        return this.storage.getItem('useHostnames') ==='true';
     }
 
     private async getWebhookUrl(slug: string): Promise<string> {

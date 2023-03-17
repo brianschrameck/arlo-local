@@ -107,6 +107,7 @@ export interface DeviceSummary {
 export interface DeviceStatus {
     Bat1Volt: number,
     BatPercent: number,
+    BatteryPercentage: number,
     BatTech: string,
     CriticalBatStatus: number,
     FailedStreams: number,
@@ -165,6 +166,7 @@ export interface CameraStatus extends DeviceStatus {
 
 export interface DeviceRegistration {
     BatPercent: number,
+    BatteryPercentage: number,
     BatTech: string,
     Capabilities: [string],
     CommProtocolVersion: number,

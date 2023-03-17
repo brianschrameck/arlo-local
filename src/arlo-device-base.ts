@@ -22,12 +22,12 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
 
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
         this.deviceRegistration = deviceRegistration;
-        this.batteryLevel = this.deviceRegistration.BatPercent;
+        this.batteryLevel = this.deviceRegistration.BatPercent || this.deviceRegistration.BatteryPercentage;
     }
 
     onStatusUpdated(deviceStatus: DeviceStatus) {
         this.deviceStatus = deviceStatus;
-        this.batteryLevel = this.deviceStatus.BatPercent;
+        this.batteryLevel = this.deviceStatus.BatPercent || this.deviceStatus.BatteryPercentage;
         // if the charger tech is present and includes QuickCharger or Regular, then we are externally powered
         const chargerTech = (this.deviceStatus as CameraStatus)?.ChargerTech;
         this.externallyPowered = chargerTech && ['QuickCharger', 'Regular'].includes(chargerTech);

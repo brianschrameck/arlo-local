@@ -259,17 +259,17 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         ];
 
         for (const capability of deviceRegistration?.Capabilities) {
-            switch (capability) {
-                case 'H.264Streaming':
+            switch (capability.toLowerCase()) {
+                case 'h.264streaming':
                     interfaces.push(ScryptedInterface.VideoCamera);
                     break;
-                case 'BatteryLevel':
+                case 'batterylevel':
                     interfaces.push(ScryptedInterface.Battery);
                     break;
-                case 'PirMotion':
+                case 'pirmotion':
                     interfaces.push(ScryptedInterface.MotionSensor);
                     break;
-                case 'JPEGSnapshot':
+                case 'jpegsnapshot':
                     interfaces.push(ScryptedInterface.Camera);
                     break;
                 default:

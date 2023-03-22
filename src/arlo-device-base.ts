@@ -1,7 +1,7 @@
 import { Battery, MotionSensor, ScryptedDeviceBase, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import { ArloDeviceProvider } from './main';
 
-import { DeviceSummary, DeviceStatus, DeviceRegistration, CameraStatus } from './base-station-api-client';
+import { DeviceSummary, DeviceStatus, DeviceRegistration, ChargerTech } from './base-station-api-client';
 
 const DEFAULT_MOTION_TIMEOUT = 10; // seconds
 
@@ -29,8 +29,8 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
         this.deviceStatus = deviceStatus;
         this.batteryLevel = this.deviceStatus.BatPercent;
         // if the charger tech is present and includes QuickCharger or Regular, then we are externally powered
-        const chargerTech = (this.deviceStatus as CameraStatus)?.ChargerTech;
-        this.externallyPowered = chargerTech && ['QuickCharger', 'Regular'].includes(chargerTech);
+        const chargerTech = this.deviceStatus?.ChargerTech;
+        this.externallyPowered = chargerTech && [ChargerTech.QuickCharger, ChargerTech.Regular, ChargerTech.VacCharger].includes(chargerTech);
     }
 
     /** MotionSensor */

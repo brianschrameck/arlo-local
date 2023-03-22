@@ -53,32 +53,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         this.snapshotInProgress = true;
         this.console.debug(`${this.nativeId}: requesting snapshot`);
 
-        // if this stream is prebuffered, its safe to use the prebuffer to generate an image
-        try {
-            const realDevice = systemManager.getDeviceById<VideoCamera>(this.id);
-            const msos = await realDevice.getVideoStreamOptions();
-            let prebufferChannel = msos?.find(mso => mso.prebuffer);
-            if (prebufferChannel) {
-                prebufferChannel = prebufferChannel || {
-                    id: undefined,
-                };
-
-                const request = prebufferChannel as RequestMediaStreamOptions;
-                // specify the prebuffer based on the usage. events shouldn't request
-                // lengthy prebuffers as it may not contain the image it needs.
-                request.prebuffer = 500;
-                request.refresh = false;
-                this.console.log(`${this.nativeId}: snapshotting active prebuffer`);
-                const vs = await realDevice.getVideoStream(request);
-                const buffer = await mediaManager.convertMediaObjectToBuffer(vs, 'image/jpeg');
-                this.snapshotInProgress = false;
-                return this.createMediaObject(buffer, 'image/jpeg');
-            }
-        }
-        catch (e) {
-        }
-
-        // otherwise, request a snapshot from the camera, if it's eligible
+        // request a snapshot from the camera, if it's eligible
         if (this.isSnapshotEligible || this.externallyPowered) {
             const response = await this.provider.baseStationApiClient.postSnapshotRequest(this.nativeId);
             if (response.result) {

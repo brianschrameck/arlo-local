@@ -105,98 +105,92 @@ export interface DeviceSummary {
 }
 
 export interface DeviceStatus {
-    Bat1Volt: number,
-    BatPercent: number,
-    BatTech: string,
-    CriticalBatStatus: number,
-    FailedStreams: number,
-    FailedUpgrades: number,
-    HardwareRevision: string,
-    ID: number,
-    LogFrequency: number,
-    PIREvents: number,
-    SignalStrengthIndicator: number,
-    SystemFirmwareVersion: string,
-    SystemSerialNumber: string,
-    Type: string,
-    WifiConnectionAttempts: number,
-    WifiConnectionCount: number
-}
-
-export interface AudioDoorbellStatus extends DeviceStatus {
-    ButtonEvents: number,
-    Hibernate: string, // boolean string
-    WifiCountryDetails: string,
-    WifiCountryRegion: number
-}
-
-export interface CameraStatus extends DeviceStatus {
-    Battery1CaliVoltage: number,
-    CameraOffline: number,
-    CameraOnline: number,
-    ChargerTech: string,
-    ChargingState: string,
-    DdrFailCnt: number,
-    DhcpFCnt: number,
-    IRLEDsOn: number,
-    ISPOn: number,
-    ISPWatchdogCount: number,
-    ISPWatchdogCount2: number,
-    MotionStreamed: number,
-    PercentAtPlug: number,
-    PercentAtUnPlug: number,
-    PoweredOn: number,
-    RegFCnt: number,
-    RtcpDiscCnt: number,
-    SecsPerPercentAvg: number,
-    SecsPerPercentCurr: number,
-    SnapshotCount: number,
-    Streamed: number,
-    Temperature: number,
-    TimeAtPlug: number,
-    TimeAtUnPlug: number,
-    TxErr: number,
-    TxFail: number,
-    TxPhyE1: number,
-    TxPhyE2: number,
-    UpdateSystemModelNumber: string,
-    UserStreamed: number
+    Bat1Volt?: number,
+    BatPercent?: number,
+    BatTech?: string,
+    Battery1CaliVoltage?: number,
+    ButtonEvents?: number,
+    CameraOffline?: number,
+    CameraOnline?: number,
+    ChargerTech?: ChargerTech,
+    ChargingState?: string,
+    CriticalBatStatus?: number,
+    DdrFailCnt?: number,
+    DhcpFCnt?: number,
+    FailedStreams?: number,
+    FailedUpgrades?: number,
+    HardwareRevision?: string,
+    Hibernate?: string, // boolean string
+    ID?: number,
+    IRLEDsOn?: number,
+    ISPOn?: number,
+    ISPWatchdogCount?: number,
+    ISPWatchdogCount2?: number,
+    LogFrequency?: number,
+    MotionStreamed?: number,
+    PercentAtPlug?: number,
+    PercentAtUnPlug?: number,
+    PIREvents?: number,
+    PoweredOn?: number,
+    RegFCnt?: number,
+    RtcpDiscCnt?: number,
+    SecsPerPercentAvg?: number,
+    SecsPerPercentCurr?: number,
+    SignalStrengthIndicator?: number,
+    SnapshotCount?: number,
+    Streamed?: number,
+    SystemFirmwareVersion?: string,
+    SystemSerialNumber?: string,
+    Temperature?: number,
+    TimeAtPlug?: number,
+    TimeAtUnPlug?: number,
+    TxErr?: number,
+    TxFail?: number,
+    TxPhyE1?: number,
+    TxPhyE2?: number,
+    Type?: string,
+    UpdateSystemModelNumber?: string,
+    UserStreamed?: number
+    WifiConnectionAttempts?: number,
+    WifiConnectionCount?: number
+    WifiCountryDetails?: string,
+    WifiCountryRegion?: number
 }
 
 export interface DeviceRegistration {
-    BatPercent: number,
-    BatTech: string,
-    Capabilities: [string],
-    CommProtocolVersion: number,
-    HardwareRevision: string,
-    ID: number,
-    InterfaceVersion: number,
-    LogFrequency: number,
-    SignalStrengthIndicator: number,
-    Sync: string, // boolean string
-    SystemFirmwareVersion: string,
-    SystemModelNumber: string,
-    SystemSerialNumber: string,
-    Type: string
+    BatPercent?: number,
+    BattChargeMaxTemp?: number,
+    BattChargeMinTemp?: number,
+    BatTech?: string,
+    BootSeconds?: number,
+    Capabilities?: [string],
+    ChargerTech?: ChargerTech,
+    ChargingState?: string,
+    CommProtocolVersion?: number,
+    HardwareRevision?: string,
+    ID?: number,
+    InterfaceVersion?: number,
+    LogFrequency?: number,
+    SBE?: string, // boolean string
+    SignalStrengthIndicator?: number,
+    Sync?: string, // boolean string
+    SystemFirmwareVersion?: string,
+    SystemModelNumber?: string,
+    SystemSerialNumber?: string,
+    Temperature?: number,
+    ThermalShutdownMaxTemp?: number,
+    ThermalShutdownMinTemp?: number,
+    ThermalShutdownRechargeMaxTemp?: number,
+    Type?: string
+    UpdateSystemModelNumber?: string,
+    WifiSSID?: string
 }
 
-export interface AudioDoorbellRegistration {
-    BCC: string,
-    RtpPort: number,
-    SKU: string,
-}
-
-export interface CameraRegistration {
-    BattChargeMaxTemp: number,
-    BattChargeMinTemp: number,
-    BootSeconds: number,
-    ChargerTech: string,
-    ChargingState: string,
-    Temperature: number,
-    ThermalShutdownMaxTemp: number,
-    ThermalShutdownMinTemp: number,
-    ThermalShutdownRechargeMaxTemp: number,
-    UpdateSystemModelNumber: string
+export enum ChargerTech {
+    None = "None",
+    QuickCharger = "QuickCharger",
+    Regular = "Regular",
+    VacCharger = "VAC Charger"
 }
 
 export interface WebhookEvent {

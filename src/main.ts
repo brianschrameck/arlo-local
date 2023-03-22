@@ -1,8 +1,8 @@
 import { Device, DeviceProvider, HttpRequest, HttpRequestHandler, HttpResponse, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, Setting, Settings, SettingValue } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, AudioDoorbellStatus, RegisteredEvent } from './base-station-api-client';
+import { BaseStationApiClient, DeviceSummary, MotionDetectedEvent, DeviceStatus, StatusUpdatedEvent, WebhookEvent, ButtonPressedEvent, DeviceRegistration, RegisteredEvent } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
-import { ArloAudioDoorbellDevice } from './audio-doorbell';
+import { ArloDoorbellDevice } from './doorbell';
 import { ArloCameraDevice } from './camera';
 
 const { deviceManager } = sdk;
@@ -110,7 +110,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
             const buttonPressedEvent: ButtonPressedEvent = JSON.parse(request.body);
             if (this.webhookEventIsValid(buttonPressedEvent, response)) {
                 const device = (await this.getDevice(buttonPressedEvent.serial_number))
-                if (device instanceof ArloAudioDoorbellDevice) {
+                if (device instanceof ArloDoorbellDevice) {
                     device.onButtonPressed(buttonPressedEvent.triggered.toLowerCase() === 'true');
                 }
             } else {
@@ -240,11 +240,10 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
 
         const interfaces = ArloDeviceProvider.getDeviceInterfaces(deviceRegistration, deviceStatus);
         let retDevice: ArloDeviceBase;
-        if (interfaces.includes(ScryptedInterface.VideoCamera)) {
+        if (interfaces.includes(ScryptedInterface.BinarySensor)) {
+            retDevice = new ArloDoorbellDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
+        } else if (interfaces.includes(ScryptedInterface.VideoCamera)) {
             retDevice = new ArloCameraDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
-        } else if (interfaces.includes(ScryptedInterface.BinarySensor)) {
-            retDevice = new ArloAudioDoorbellDevice(this, nativeId, deviceSummary, deviceRegistration, deviceStatus);
-            this.console.log('returning doorbell device with interfaces: ' + retDevice.interfaces);
         } else {
             throw new Error('unknown device type');
         }
@@ -278,7 +277,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         }
 
         // sadly, Arlo doesn't report a specific capability for doorbells, so we check if the status includes a count of button press events
-        if ((deviceStatus as AudioDoorbellStatus)?.ButtonEvents !== undefined) {
+        if (deviceStatus?.ButtonEvents !== undefined) {
             interfaces.push(ScryptedInterface.BinarySensor);
         }
 

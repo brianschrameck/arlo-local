@@ -1,7 +1,7 @@
 import { Camera, FFmpegInput, MediaObject, PictureOptions, ResponseMediaStreamOptions, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions, Setting } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import proxyUdpWithRtcp from './rtsp-proxy';
-import net from 'net';
+import proxyUdpWithRtcp, { teardown } from './rtsp-proxy';
+import net, { AddressInfo } from 'net';
 
 import { DeviceRegistration, DeviceStatus } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
@@ -129,7 +129,6 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
             audio: this.isAudioDisabled() ? null : {
                 codec: 'aac'
             },
-           // sendRtcpRr: false,
             allowBatteryPrebuffer: this.allowBatteryPrebuffer() && this.externallyPowered
         }];
     }
@@ -168,13 +167,10 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         this.resetStreamTimeout();
 
         this.console.info('About to create proxy');
-        const {server, port} = await proxyUdpWithRtcp(`rtsp://${this.deviceSummary.ip}/live`); // TODO: use port 555 for 4k cameras
-        this.console.info(`proxy port ${port}`);
-
-        this.rtspProxyServer = server;
+        this.rtspProxyServer = await proxyUdpWithRtcp(`rtsp://${this.deviceSummary.ip}/live`); // TODO: use port 555 for 4k cameras
 
         this.originalMedia = {
-            url: `rtsp://127.0.0.1:${port}`,
+            url: `rtsp://127.0.0.1:${(this.rtspProxyServer.address() as AddressInfo).port}`,
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
@@ -189,10 +185,11 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         clearTimeout(this.refreshTimeout);
         this.refreshTimeout = setTimeout(() => {
             this.console.debug('stopping stream')
+            teardown();
+            this.rtspProxyServer.close();
+            this.rtspProxyServer = undefined;
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
-            this.rtspProxyServer?.close();
-            this.rtspProxyServer = undefined;
         }, STREAM_TIMEOUT);
     }
 

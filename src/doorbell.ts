@@ -2,9 +2,9 @@ import { BinarySensor } from '@scrypted/sdk';
 import { ArloDeviceProvider } from './main';
 
 import { DeviceSummary, DeviceStatus, DeviceRegistration } from './base-station-api-client';
-import { ArloDeviceBase } from './arlo-device-base';
+import { ArloCameraDevice } from './camera';
 
-export class ArloAudioDoorbellDevice extends ArloDeviceBase implements BinarySensor {
+export class ArloDoorbellDevice extends ArloCameraDevice implements BinarySensor {
     private buttonTimeout?: NodeJS.Timeout;
 
     constructor(public provider: ArloDeviceProvider, nativeId: string, deviceSummary: DeviceSummary, deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus) {

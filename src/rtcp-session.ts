@@ -1,3 +1,8 @@
+import { RtcpReceiverInfo, RtcpRrPacket } from "../../../external/werift/packages/rtp/src/rtcp/rr";
+import { RtcpPacketConverter } from "../../../external/werift/packages/rtp/src/rtcp/rtcp";
+import { RtcpSrPacket } from "../../../external/werift/packages/rtp/src/rtcp/sr";
+import { RtpPacket } from "../../../external/werift/packages/rtp/src/rtp/rtp";
+
 const MAX_DROPOUT = 3000;
 const MAX_MISORDER = 100;
 const MIN_SEQUENTIAL = 2;
@@ -22,27 +27,14 @@ export class RtcpSession {
     /** sequence information about this source/session */
     private seqInfo?: SequenceInfo;
     /** the most recently received Sender Report */
-    private lastSr?: Buffer;
+    private lastSr?: RtcpSrPacket;
     /** the timestamp, in microseconds, the most recent Sender Report was received */
     private lastSrMicros?: number;
 
-    /**
-     *     0                   1                   2                   3
-     *     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-     *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *    |V=2|P|X|  CC   |M|     PT      |       sequence number         |
-     *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *    |                           timestamp                           |
-     *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *    |           synchronization source (SSRC) identifier            |
-     *    +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-     *    |            contributing source (CSRC) identifiers             |
-     *    |                             ....                              |
-     *    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     */
     onRtp(packet: Buffer) {
-        const seqNum = packet.readUInt16BE(2);
-        const ssrc = packet.readUInt32BE(8);
+        const rtpPacket = RtpPacket.deSerialize(packet);
+        const seqNum = rtpPacket.header.sequenceNumber;
+        const ssrc = rtpPacket.header.ssrc;
         if (!this.seqInfo) {
             this.seqInfo = {
                 ssrc: ssrc,
@@ -123,64 +115,53 @@ export class RtcpSession {
     }
 
     onRtcpSr(packet: Buffer) {
-        this.lastSr = packet;
+        const rtcpPackets = RtcpPacketConverter.deSerialize(packet);
+        const sr = rtcpPackets.find(packet => packet.type === 200) as RtcpSrPacket;
+        this.lastSr = sr;
         this.lastSrMicros = this.hrToMicros(process.hrtime.bigint());
     }
 
-    /**
-     *        0                   1                   2                   3
-     *         0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     * header |V=2|P|    RC   |   PT=RR=201   |             length            |
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *        |                     SSRC of packet sender                     |
-     *        +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
-     * report |                 SSRC_1 (SSRC of first source)                 |
-     * block  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *   1    | fraction lost |       cumulative number of packets lost       |
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *        |           extended highest sequence number received           |
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *        |                      interarrival jitter                      |
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *        |                         last SR (LSR)                         |
-     *        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *        |                   delay since last SR (DLSR)                  |
-     *        +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=
-     */
-    buildReceiverReport(): Buffer {
-        if (!this.seqInfo) {
-            // we haven't seen any data yet
-            return Buffer.alloc(1);
+    buildReceiverReport(): RtcpRrPacket {
+        if (!this.seqInfo || !this.lastSr) {
+            return;
         }
 
-        const rr = Buffer.alloc(32);
-        rr.writeUInt8(129);                           // V=2|P|RC: 10|0|00001 (V2|0|1)
-        rr.writeUInt8(201, 1);                        // PT=RR=201
-        rr.writeUInt16BE(7, 2);                       // length: 8 32-bit words - 1 = 7
-        rr.writeUInt32BE(0, 4);                       // SSRC of packet sender: 0
-        rr.writeUInt32BE(this.seqInfo.ssrc, 8);       // SSRC_1 (SSRC of first source)
-        rr.writeUInt32BE(0, 12);                      // fraction lost|cumulative number of packets lost
-        rr.writeUInt16BE(this.seqInfo.cycles, 16);    // count of sequence number cycles
-        rr.writeUInt32BE(this.seqInfo.maxSeqNum, 18); // highest sequence number received in an RTP data packet from source
-        rr.writeUInt32BE(0, 20);                      // interarrival jitter
+        const ssrc = this.seqInfo.ssrc;
+        const fractionLost = 0;
+        const packetsLost = 0;
+        const highestSequence = this.seqInfo.maxSeqNum;
+        const jitter = 0;
 
         // last SR timestamp (LSR): 32 bits
         // The middle 32 bits out of 64 in the NTP timestamp received as part of the most recent RTCP sender report (SR)
-        // packet from source SSRC_n.  If no SR has been received yet, the field is set to zero.
-        const lastSrTimestamp = this.lastSr ? this.lastSr.readUInt32BE(10) : 0;
-        rr.writeUInt32BE(lastSrTimestamp, 24);        // last SR (LSR)
+        // packet from source SSRC_n.
+        const lastSrTimestamp = this.lastSr.senderInfo.ntpTimestamp;
+        // Convert to buffer and take the middle 32 bits.
+        const lastSrBuf = this.getInt64Bytes(lastSrTimestamp).subarray(2, 6);
+        // Convert to a number.
+        const lsr = this.intFromBytes(lastSrBuf);
 
         // The delay, expressed in units of 1/65536 seconds, between receiving the last SR packet from source SSRC_n 
         // and sending this reception report block.
-        // If no SR packet has been received yet from SSRC_n, the DLSR field is set to zero.
         const micros = this.hrToMicros(process.hrtime.bigint());
-        const delaySinceLastSr = this.lastSr ? (micros - this.lastSrMicros) * 1000000 / 65536 : 0;
-        rr.writeUInt32BE(delaySinceLastSr, 28);       // delay since last SR (DLSR)
-        return rr;
+        const dlsr = (micros - this.lastSrMicros) * 1000000 / 65536;
+
+        // Build and return the Receiver Report.
+        const reports = [new RtcpReceiverInfo({ ssrc, fractionLost, packetsLost, highestSequence, jitter, lsr, dlsr })];
+        return new RtcpRrPacket({ ssrc, reports });
     }
 
     private hrToMicros(hrTs: bigint): number {
         return (hrTs[0] * 1000000) + (hrTs[1] / 1000);
+    }
+
+    private getInt64Bytes(x: bigint) {
+        const bytes = Buffer.alloc(8);
+        bytes.writeBigUInt64LE(x);
+        return bytes;
+    }
+
+    private intFromBytes(x: Buffer) {
+        return x.readUint32LE();
     }
 }

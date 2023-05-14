@@ -1,13 +1,12 @@
-import { Camera, FFmpegInput, MediaObject, PictureOptions, ResponseMediaStreamOptions, VideoCamera, ScryptedMimeTypes, RequestMediaStreamOptions, Setting } from '@scrypted/sdk';
+import { Camera, FFmpegInput, MediaObject, PictureOptions, ResponseMediaStreamOptions, VideoCamera, ScryptedMimeTypes, Setting } from '@scrypted/sdk';
 import sdk from '@scrypted/sdk';
-import proxyUdpWithRtcp, { teardown } from './rtsp-proxy';
-import net, { AddressInfo } from 'net';
+import { RtspUdpProxy } from './rtsp-proxy';
 
 import { DeviceRegistration, DeviceStatus } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
 import { sleep } from '@scrypted/common/src/sleep';
 
-const { systemManager, mediaManager } = sdk;
+const { mediaManager } = sdk;
 
 const REFRESH_TIMEOUT = 40000; // milliseconds (rebroadcast refreshes 30 seconds before the specified refreshAt time)
 const STREAM_TIMEOUT = 10200; // milliseconds (leave a small buffer for rebroadcast to call back)
@@ -18,7 +17,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
     private isSnapshotEligible: boolean = true;
     private cachedSnapshot?: ArrayBuffer;
     private snapshotInProgress: boolean = false;
-    private rtspProxyServer?: net.Server;
+    private rtspUdpProxy?: RtspUdpProxy;
 
     // override
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
@@ -142,10 +141,11 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         this.resetStreamTimeout();
 
         this.console.info('About to create proxy');
-        this.rtspProxyServer = await proxyUdpWithRtcp(`rtsp://${this.deviceSummary.ip}/live`); // TODO: use port 555 for 4k cameras
+        this.rtspUdpProxy = new RtspUdpProxy(`rtsp://${this.deviceSummary.ip}/live`);
+        let proxyPort = await this.rtspUdpProxy.proxyUdpWithRtcp(); // TODO: use port 555 for 4k cameras
 
         this.originalMedia = {
-            url: `rtsp://127.0.0.1:${(this.rtspProxyServer.address() as AddressInfo).port}`,
+            url: `rtsp://127.0.0.1:${proxyPort}`,
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
@@ -158,11 +158,9 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
 
     resetStreamTimeout() {
         clearTimeout(this.refreshTimeout);
-        this.refreshTimeout = setTimeout(() => {
+        this.refreshTimeout = setTimeout(async () => {
             this.console.debug('stopping stream')
-            teardown();
-            this.rtspProxyServer.close();
-            this.rtspProxyServer = undefined;
+            await this.rtspUdpProxy?.teardown();
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
         }, STREAM_TIMEOUT);

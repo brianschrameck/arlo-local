@@ -31,7 +31,7 @@ export class RtcpSession {
     /** the timestamp, in microseconds, the most recent Sender Report was received */
     private lastSrMicros?: number;
 
-    onRtp(packet: Buffer) {
+    async onRtp(packet: Buffer) {
         const rtpPacket = RtpPacket.deSerialize(packet);
         const seqNum = rtpPacket.header.sequenceNumber;
         const ssrc = rtpPacket.header.ssrc;
@@ -137,7 +137,7 @@ export class RtcpSession {
         // packet from source SSRC_n.
         const lastSrTimestamp = this.lastSr.senderInfo.ntpTimestamp;
         // Convert to buffer and take the middle 32 bits.
-        const lastSrBuf = this.getInt64Bytes(lastSrTimestamp).subarray(2, 6);
+        const lastSrBuf = this.getUInt64Bytes(lastSrTimestamp).subarray(2, 6);
         // Convert to a number.
         const lsr = this.intFromBytes(lastSrBuf);
 
@@ -155,13 +155,13 @@ export class RtcpSession {
         return (hrTs[0] * 1000000) + (hrTs[1] / 1000);
     }
 
-    private getInt64Bytes(x: bigint) {
+    private getUInt64Bytes(x: bigint): Buffer {
         const bytes = Buffer.alloc(8);
         bytes.writeBigUInt64LE(x);
         return bytes;
     }
 
-    private intFromBytes(x: Buffer) {
+    private intFromBytes(x: Buffer): number {
         return x.readUint32LE();
     }
 }

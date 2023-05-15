@@ -140,12 +140,8 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         // reset the timeout and return the new media object
         this.resetStreamTimeout();
 
-        this.console.info('About to create proxy');
-        this.rtspUdpProxy = new RtspUdpProxy(`rtsp://${this.deviceSummary.ip}/live`);
-        let proxyPort = await this.rtspUdpProxy.proxyUdpWithRtcp(); // TODO: use port 555 for 4k cameras
-
         this.originalMedia = {
-            url: `rtsp://127.0.0.1:${proxyPort}`,
+            url: await this.buildRtspUrl(),
             mediaStreamOptions: {
                 id: 'channel0',
                 refreshAt: Date.now() + REFRESH_TIMEOUT,
@@ -156,11 +152,22 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         return mediaManager.createFFmpegMediaObject(this.originalMedia);
     }
 
-    resetStreamTimeout() {
+    async buildRtspUrl(): Promise<string> {
+        if (this.sendRtcpRr()) {
+            this.console.info('About to create proxy');
+            this.rtspUdpProxy = new RtspUdpProxy(`rtsp://${this.deviceSummary.ip}/live`);
+            let proxyPort = await this.rtspUdpProxy.proxyUdpWithRtcp(); // TODO: use port 555 for 4k cameras
+            return `rtsp://127.0.0.1:${proxyPort}`;
+        } else {
+            return `rtsp://${this.deviceSummary.ip}/live`;
+        }
+    }
+
+    resetStreamTimeout(): void {
         clearTimeout(this.refreshTimeout);
-        this.refreshTimeout = setTimeout(async () => {
+        this.refreshTimeout = setTimeout(() => {
             this.console.debug('stopping stream')
-            await this.rtspUdpProxy?.teardown();
+            this.rtspUdpProxy?.teardown();
             this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
         }, STREAM_TIMEOUT);
@@ -179,10 +186,21 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
                 type: 'boolean',
                 value: (this.allowBatteryPrebuffer()).toString(),
             },
+            {
+                key: 'sendRtcpRr',
+                title: 'Prevent Infinite Streaming on UDP',
+                description: 'Enable this if your camera only supports UDP and you want to send RTCP Receiver Reports to it to avoid it streamining indefinitely. Not compatible with TCP.',
+                type: 'boolean',
+                value: (this.allowBatteryPrebuffer()).toString(),
+            },
         ]);
     }
 
     allowBatteryPrebuffer(): boolean {
         return this.storage.getItem('allowBatteryPrebuffer') === 'true';
+    }
+
+    sendRtcpRr(): boolean {
+        return this.storage.getItem('sendRtcpRr') === 'true';
     }
 }

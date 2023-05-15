@@ -24,7 +24,7 @@ export class RtspUdpProxy {
             const describeResponse = await this.rtspClient.describe();
             const sdp = describeResponse.body.toString();
 
-            // create an RTSP server using the SDP
+            // create an RTSP server using the SDP and ensure we get a PLAY response
             this.rtspServer = new RtspServer(serverSocket, sdp, true);
             const setupResponse = await this.rtspServer.handlePlayback();
             if (setupResponse !== 'play') {
@@ -34,6 +34,7 @@ export class RtspUdpProxy {
             }
             console.log('playback handled');
 
+            // go through each track and set up the RTCP session for it
             for (const track of Object.keys(this.rtspServer.setupTracks)) {
                 console.log('setting up track')
                 const rtcpSession = new RtcpSession();
@@ -46,10 +47,16 @@ export class RtspUdpProxy {
                         this.rtspServer.sendTrack(setupTrack.control, rtp, false);
                     },
                 };
+
+                // set up the RTSP client; RTSP handshake
                 const setupResult = await this.rtspClient.setup(setup);
+
+                // set up the RTCP client
                 let rtcpDgram = await this.setupRtcpDgram(setup);
 
+                // ensure we parsed the handshake correctly
                 if (setupResult.headers.transport) {
+                    // exctract the RTSP and RTCP server ports
                     const match = setupResult.headers.transport.match(/.*?server_port=([0-9]+)-([0-9]+)/);
                     if (match) {
                         const [_, rtp, rtcp] = match;
@@ -57,12 +64,17 @@ export class RtspUdpProxy {
                         const rtpcPublishPort = parseInt(rtcp);
                         // have seen some servers return a server_port 0. should watch for bad data in any case.
                         if (rtpcPublishPort) {
+                            // ensure we can contact the RTCP port on the server
                             const { hostname } = new URL(this.rtspClientUrl);
                             const punch = Buffer.alloc(1);
                             rtcpDgram.send(punch, rtpcPublishPort, hostname);
+
+                            // when we receive an RTCP Sender Report...
                             rtcpDgram.on('message', async data => {
+                                // parse it
                                 rtcpSession.onRtcpSr(data);
                                 try {
+                                    // build and send an RTCP Receiver Report
                                     const rr = rtcpSession.buildReceiverReport();    
                                     rtcpDgram.send(rr.serialize(), rtpcPublishPort, hostname);
                                 } catch (error) {
@@ -83,14 +95,17 @@ export class RtspUdpProxy {
             this.server.on('close', () => {
                 console.log('closing rtcp proxy');
                 serverSocket.destroy();
-                this.rtspClient.client.destroy();
             });
 
+            // time to start the stream and read it
             await this.rtspClient.play();
             await this.rtspClient.readLoop();
         });
 
+        // listen on a random port
         await listenZero(this.server);
+
+        // return the port that this server is listening on
         return (this.server.address() as AddressInfo).port;
     }
 

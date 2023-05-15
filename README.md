@@ -4,7 +4,7 @@
 
 The Arlo Local Plugin connects Scrypted to your Arlo camera or Audio Doorbell locally, allowing you to access these Arlo devices in Scrypted without relying on their cloud offering in any way. This plugin is in a BETA state and NO WARRANTY IS EXPRESSED OR IMPLIED.
 
-This plugin must be used in conjuction with the [Arlo Cam API](https://github.com/brianschrameck/arlo-cam-api) and has been tested with Arlo Pro 2 cameras, Arlo Audio Doorbells, and a VMB4000r3 Base Station. It should work for other devices that are required to connect directly to the Arlo Base Station. It's unclear if it would work for other devices that can optionally connect to Wi-Fi directly.
+This plugin must be used in conjuction with the [Arlo Cam API](https://github.com/brianschrameck/arlo-cam-api) and has been tested with Arlo Pro 2 cameras, Arlo Audio Doorbells, and a VMB4000r3 Base Station. It should work for other devices that are required to connect directly to the Arlo Base Station. It will not work with devices that have been configured to connect directly to Wi-Fi using Arlo's configuration wizard.
 
 ## Features Supported
 
@@ -16,6 +16,7 @@ This plugin must be used in conjuction with the [Arlo Cam API](https://github.co
 * Arlo subscription-quality streams without fees or the cloud (higher bitrate and sub-second latency!)
 * supports all HomeKit Secure Video (HKSV) features including AI person, vehicle, animal, and package detection, face recognition, etc.; also reports battery status and camera information to HomeKit
 * motion and binary sensor support from Audio Doorbells
+* *new in 0.5.0*: RTCP Receiver Reports to prevent the camera from falling into an infinite streaming loop when using UDP
 
 ## Future Features (maybe)
 
@@ -57,7 +58,7 @@ Head back to the plugin configuration in Scrypted and put your Arlo Cam API's se
 
 ### Device Configuration
 
-For each camera discovered by the plugin, head to the `Settings > Streams > Stream: Stream 1` and change the `RTSP Parser` to `Scrypted (UDP)`, then click `Save`.
+If your camera only supports UDP, check the box to `Prevent Infinite Streaming on UDP`. This is not needed if your camera supports TCP. You can tell if your camera supports TCP if you get a video feed when trying to stream using the default settings.
 
 Congratulations! You finally made it! Your Arlo devices are ready to use locally.
 
@@ -69,18 +70,12 @@ If you wish, add the HomeKit plugin and pair your cameras to HomeKit secure vide
 
 Things will break. This is not stable yet. These devices were never meant to do this and are fickle as hell. Some of these limitations may be able to be fixed in future updates, but here are some tips in the meantime:
 
-1. Don't try any of the other parsers as the cameras don't support TCP streams and the FFmpeg parser will cause the stream to crash within seconds, requiring you to reboot your camera.
+1. If you have multiple Wi-Fi access points, the cameras tend to hold on to one. You may want to reboot your camera right next to the access point you want it to connect to. If you have the ability to modify the Minimum RSSI then you can also do that to try and force cameras onto the right access point. Or if you have the ability to lock a camera to an access point in your network software, that can work. However, like mentioned above, you may need to have whatever access points you want the cameras to use to all share the same Wi-Fi channel.
 
-2. Do not abruptly kill Scrypted processes. Don't run updates while your cameras are actively streaming. It is recommended to set all of the cameras to disabled and wait until they stop streaming (you would need to also disable prebuffer, this means) before doing any Rebroadcast/Prebuffer plugin updates. If you don't do the above, the camera will continue streaming even though there is nobody listening and it WILL kill your battery.
+2. If you are using UDP and getting `ECONNREFUSED` errors in the plugin/camera console, this means your camera is already sending a stream to another socket. This can happen if the camera doesn't receive the `TEARDOWN` command from Scrypted. Ensure you have turned on `Prevent Infinite Streaming on UDP`, then reboot your cameras by pulling the battery (or you can try killing their network connection for a few minutes).
 
-3. If you have multiple Wi-Fi access points, the cameras tend to hold on to one. You may want to reboot your camera right next to the access point you want it to connect to. If you have the ability to modify the Minimum RSSI then you can also do that to try and force cameras onto the right access point. Or if you have the ability to lock a camera to an access point in your network software, that can work. However, like mentioned above, you may need to have whatever access points you want the cameras to use to all share the same Wi-Fi channel.
+3. The live stream can be pretty jittery for UDP cameras. Make sure you have VERY strong Wi-Fi coverage for the cameras.
 
-4. If you are getting `ECONNREFUSED` errors in the plugin/camera console, this means your camera is already sending a stream to another socket. This can happen if Scrypted leaves the socket open for some reason. I've had success rebooting the camera in that situation (pulling the battery). You can also try shutting down the Scrypted server for a bit, though I have not found success in this when using Docker. Lastly, you can bump them off the Wi-Fi for a few minutes, at which point they should give up and reset the stream.
+4. You can't control the devices without using the REST API directly. They are defaulted to always "armed" which means they will always send a motion notification to Scrypted. Video quality is defaulted to "subscription". Additionally, if the camera "re-registers" with the API, your settings will be overwritten.
 
-5. The live stream can be pretty jittery. Make sure you have VERY strong Wi-Fi coverage for the cameras.
-
-6. You can't control the devices without using the REST API directly. They are defaulted to always "armed" which means they will always send a motion notification to Scrypted. Video quality is defaulted to "subscription".
-
-7. The camera streams have no authentication mechanism, and they are sent unencrypted over the wire. Use them only on a network you own and trust, as anybody could theoretically listen to the traffic and reconstruct the video by sniffing the packets.
-
-8. For some reason the cameras start streaming when switching power source, and Scrypted isn't handling this properly leading to the same issue of infinite streaming mentioned above. You may want to reboot the camera when plugging or unplugging to charge. Alternatively, disable them before power state changes as mentioned above.
+5. The camera streams have no authentication mechanism, and they are sent unencrypted over the wire. Use them only on a network you own and trust, as anybody could theoretically listen to the traffic and reconstruct the video by sniffing the packets.

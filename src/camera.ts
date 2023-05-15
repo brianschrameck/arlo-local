@@ -191,7 +191,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
                 title: 'Prevent Infinite Streaming on UDP',
                 description: 'Enable this if your camera only supports UDP and you want to send RTCP Receiver Reports to it to avoid it streamining indefinitely. Not compatible with TCP.',
                 type: 'boolean',
-                value: (this.allowBatteryPrebuffer()).toString(),
+                value: (this.sendRtcpRr()).toString(),
             },
         ]);
     }

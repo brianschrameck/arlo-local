@@ -12,12 +12,16 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
     deviceStatus: DeviceStatus;
     externallyPowered: boolean = false;
 
-    constructor(public provider: ArloDeviceProvider, nativeId: string, deviceSummary: DeviceSummary, deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus) {
+    constructor(public provider: ArloDeviceProvider, nativeId: string, deviceSummary: DeviceSummary, deviceRegistration: DeviceRegistration | undefined, deviceStatus: DeviceStatus | undefined) {
         super(nativeId);
         this.motionDetected = false;
         this.deviceSummary = deviceSummary;
-        this.onRegistrationUpdated(deviceRegistration);
-        this.onStatusUpdated(deviceStatus)
+        if (deviceRegistration != null) {
+            this.onRegistrationUpdated(deviceRegistration);
+        }
+        if (deviceStatus != null) {
+            this.onStatusUpdated(deviceStatus)
+        }
     }
 
     onRegistrationUpdated(deviceRegistration: DeviceRegistration) {
@@ -30,7 +34,7 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
         this.batteryLevel = this.deviceStatus.BatPercent || this.deviceStatus.BatteryPercentage;
         // if the charger tech is present and includes QuickCharger or Regular, then we are externally powered
         const chargerTech = this.deviceStatus?.ChargerTech;
-        this.externallyPowered = chargerTech && [ChargerTech.QuickCharger, ChargerTech.Regular, ChargerTech.VacCharger].includes(chargerTech);
+        this.externallyPowered = chargerTech != null && [ChargerTech.QuickCharger, ChargerTech.Regular, ChargerTech.VacCharger].includes(chargerTech);
     }
 
     /** MotionSensor */
@@ -76,11 +80,14 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
 
     // implement
     async putSetting(key: string, value: SettingValue) {
-        this.storage.setItem(key, value.toString());
+        if (value != null) {
+            this.storage.setItem(key, value.toString());
+        }
     }
 
-    getMotionSensorTimeout() {
-        return parseInt(this.storage.getItem('motionSensorTimeout')) || DEFAULT_MOTION_TIMEOUT;
+    getMotionSensorTimeout(): number {
+        let motionSensorTimeout = this.storage.getItem('motionSensorTimeout');
+        return motionSensorTimeout == null ? DEFAULT_MOTION_TIMEOUT : parseInt(motionSensorTimeout);
     }
 
     isAudioDisabled() {

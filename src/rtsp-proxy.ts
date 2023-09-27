@@ -1,7 +1,8 @@
 import net, { AddressInfo } from 'net';
-import { closeQuiet, createBindUdp, listenZero } from '../../../common/src/listen-cluster';
-import { RtspClient, RtspClientUdpSetupOptions, RtspServer } from '../../../common/src/rtsp-server';
-import { RtcpSession } from "./rtcp-session";
+import { closeQuiet, createBindUdp, listenZero } from '@scrypted/common/src/listen-cluster';
+import { RtspClient, RtspClientUdpSetupOptions, RtspServer } from '@scrypted/common/src/rtsp-server';
+import { RtcpSession } from './rtcp-session';
+import { Socket } from 'dgram';
 
 export class RtspUdpProxy {
     private rtspClient: RtspClient;
@@ -55,7 +56,7 @@ export class RtspUdpProxy {
                 let rtcpDgram = await this.setupRtcpDgram(setup);
 
                 // ensure we parsed the handshake correctly
-                if (setupResult.headers.transport) {
+                if (rtcpDgram != null && setupResult.headers.transport) {
                     // exctract the RTSP and RTCP server ports
                     const match = setupResult.headers.transport.match(/.*?server_port=([0-9]+)-([0-9]+)/);
                     if (match) {
@@ -75,8 +76,10 @@ export class RtspUdpProxy {
                                 rtcpSession.onRtcpSr(data);
                                 try {
                                     // build and send an RTCP Receiver Report
-                                    const rr = rtcpSession.buildReceiverReport();    
-                                    rtcpDgram.send(rr.serialize(), rtpcPublishPort, hostname);
+                                    const rr = rtcpSession.buildReceiverReport();
+                                    if (rr != null && rtcpDgram != null) {
+                                        rtcpDgram.send(rr.serialize(), rtpcPublishPort, hostname);
+                                    }
                                 } catch (error) {
                                     // Do nothing for now.
                                     console.error('Error creating receiver report');
@@ -88,7 +91,9 @@ export class RtspUdpProxy {
 
                 this.server.on('close', () => {
                     console.log('closing rtcp dgram');
-                    closeQuiet(rtcpDgram);
+                    if (rtcpDgram) {
+                        closeQuiet(rtcpDgram);
+                    }
                 });
             }
 
@@ -109,9 +114,12 @@ export class RtspUdpProxy {
         return (this.server.address() as AddressInfo).port;
     }
 
-    async setupRtcpDgram(setup: RtspClientUdpSetupOptions) {
-        const rtcpListenPort = setup.dgram.address().port + 1;
-        return (await createBindUdp(rtcpListenPort)).server;
+    async setupRtcpDgram(setup: RtspClientUdpSetupOptions): Promise<Socket | null> {
+        if (setup.dgram) {
+            const rtcpListenPort = setup.dgram?.address().port + 1;
+            return (await createBindUdp(rtcpListenPort)).server;
+        }
+        return null;
     }
 
     async teardown() {

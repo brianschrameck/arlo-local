@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosInstance, Method } from 'axios';
 import https from 'https';
-import { sleep } from '@scrypted/common/src/sleep';
+import { sleep } from './sleep';
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -20,31 +20,31 @@ export class BaseStationApiClient {
         });
     }
 
-    public async listDevices(): Promise<DeviceSummary[]> {
+    public async listDevices(): Promise<DeviceSummary[] | undefined> {
         return await this.sendRequest<DeviceSummary[]>('/device');
     }
 
-    public async postGenerateStatusRequest(serialNumber: string): Promise<GenericResponse> {
+    public async postGenerateStatusRequest(serialNumber: string): Promise<GenericResponse | undefined> {
         return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/statusrequest`, 'post');
     }
 
-    public async getStatus(serialNumber: string): Promise<DeviceStatus> {
+    public async getStatus(serialNumber: string): Promise<DeviceStatus | undefined> {
         return await this.sendRequest<DeviceStatus>(`/device/${serialNumber}`);
     }
 
-    public async getRegistration(serialNumber: string): Promise<DeviceRegistration> {
+    public async getRegistration(serialNumber: string): Promise<DeviceRegistration | undefined> {
         return await this.sendRequest<DeviceRegistration>(`/device/${serialNumber}/registration`);
     }
 
-    public async postSnapshotRequest(serialNumber: string): Promise<GenericResponse> {
+    public async postSnapshotRequest(serialNumber: string): Promise<GenericResponse | undefined> {
         const data = { url: `${this.baseUrl}/snapshot/${serialNumber}/${serialNumber}.jpg` };
         return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/snapshot`, 'post', data);
     }
 
-    public async getSnapshot(serialNumber: string): Promise<Buffer> {
-        let buffer: Buffer;
+    public async getSnapshot(serialNumber: string): Promise<Buffer | null> {
+        let buffer: Buffer | null = null;
         let attempt = 0;
-        while (!buffer && attempt < 3) {
+        while (buffer == null && attempt < 3) {
             console.info(`${serialNumber}: requesting snapshot`)
             try {
                 buffer = await this.sendFileRequest(`/snapshot/${serialNumber}`);
@@ -58,12 +58,12 @@ export class BaseStationApiClient {
         return buffer;
     }
 
-    public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<GenericResponse> {
+    public async postUserStreamActive(serialNumber: string, isActive: boolean): Promise<GenericResponse | undefined> {
         const data = { active: Number(isActive) };
         return await this.sendRequest<GenericResponse>(`/device/${serialNumber}/userstreamactive`, 'post', data);
     }
 
-    private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T> {
+    private async sendRequest<T>(url?: string, method?: Method, data?: any): Promise<T | undefined> {
         try {
             const response = await this.client.request<T>({ url, method, data })
             return response.data;

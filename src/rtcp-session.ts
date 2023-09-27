@@ -1,7 +1,4 @@
-import { RtcpReceiverInfo, RtcpRrPacket } from "../../../external/werift/packages/rtp/src/rtcp/rr";
-import { RtcpPacketConverter } from "../../../external/werift/packages/rtp/src/rtcp/rtcp";
-import { RtcpSrPacket } from "../../../external/werift/packages/rtp/src/rtcp/sr";
-import { RtpPacket } from "../../../external/werift/packages/rtp/src/rtp/rtp";
+import { RtcpReceiverInfo, RtcpRrPacket, RtcpPacketConverter, RtcpSrPacket, RtpPacket } from 'werift';
 
 const MAX_DROPOUT = 3000;
 const MAX_MISORDER = 100;
@@ -29,7 +26,7 @@ export class RtcpSession {
     /** the most recently received Sender Report */
     private lastSr?: RtcpSrPacket;
     /** the timestamp, in microseconds, the most recent Sender Report was received */
-    private lastSrMicros?: number;
+    private lastSrMicros: number = 0;
 
     async onRtp(packet: Buffer) {
         const rtpPacket = RtpPacket.deSerialize(packet);
@@ -38,11 +35,11 @@ export class RtcpSession {
         if (!this.seqInfo) {
             this.seqInfo = {
                 ssrc: ssrc,
-                maxSeqNum: undefined,
-                cycles: undefined,
-                badSeqNum: undefined,
-                probation: undefined,
-                received: undefined,
+                maxSeqNum: 0,
+                cycles: 0,
+                badSeqNum: 0,
+                probation: 0,
+                received: 0,
             };
 
             this.initSeqInfo(this.seqInfo, seqNum);
@@ -121,7 +118,7 @@ export class RtcpSession {
         this.lastSrMicros = this.hrToMicros(process.hrtime.bigint());
     }
 
-    buildReceiverReport(): RtcpRrPacket {
+    buildReceiverReport(): RtcpRrPacket | undefined {
         if (!this.seqInfo || !this.lastSr) {
             return;
         }

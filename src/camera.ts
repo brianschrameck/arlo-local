@@ -4,7 +4,7 @@ import { RtspUdpProxy } from './rtsp-proxy';
 
 import { DeviceRegistration, DeviceStatus } from './base-station-api-client';
 import { ArloDeviceBase } from './arlo-device-base';
-import { sleep } from '@scrypted/common/src/sleep';
+import { sleep } from './sleep';
 
 const { mediaManager } = sdk;
 
@@ -46,7 +46,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
     async takePicture(option?: PictureOptions): Promise<MediaObject> {
         // skip all processing if the camera is disabled or we are in the process of taking a snapshot
         if (this.isDeviceDisabled()) {
-            return;
+            return { mimeType: '' };
         }
 
         while (this.snapshotInProgress) {
@@ -57,9 +57,9 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         this.console.debug(`${this.nativeId}: requesting snapshot`);
 
         // request a snapshot from the camera, if it's eligible
-        if (this.isSnapshotEligible || this.externallyPowered) {
+        if ((this.isSnapshotEligible || this.externallyPowered) && this.provider.baseStationApiClient != null && this.nativeId != null) {
             const response = await this.provider.baseStationApiClient.postSnapshotRequest(this.nativeId);
-            if (response.result) {
+            if (response != null && response.result) {
                 await sleep(500);
                 this.console.debug(`${this.nativeId}: request successful; retrieving snapshot`);
                 const buffer = await this.provider.baseStationApiClient.getSnapshot(this.nativeId);
@@ -81,11 +81,13 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
             this.console.info(`${this.nativeId}: skipping snapshot because camera is on battery and motion hasn\'t been detected or status hasn\'t been sent recently`)
             return this.createMediaObject(this.cachedSnapshot, 'image/jpeg');
         }
+
+        return { mimeType: 'image/example' };
     }
 
     // implement
     async getPictureOptions(): Promise<PictureOptions[]> {
-        return;
+        return [];
     }
 
     /** VideoCamera */
@@ -100,7 +102,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
             video: {
                 codec: 'h264'
             },
-            audio: this.isAudioDisabled() ? null : {
+            audio: this.isAudioDisabled() ? {} : {
                 codec: 'aac'
             },
             allowBatteryPrebuffer: this.allowBatteryPrebuffer() && this.externallyPowered
@@ -111,7 +113,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
     async getVideoStream(options?: ResponseMediaStreamOptions): Promise<MediaObject> {
         // skip all processing if the camera is disabled
         if (this.isDeviceDisabled()) {
-            return;
+            return { mimeType: '' };
         }
 
         // check if this is a refresh call
@@ -124,10 +126,12 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
             const newMedia = this.originalMedia;
 
             // set a new refresh date
-            newMedia.mediaStreamOptions.refreshAt = Date.now() + REFRESH_TIMEOUT;
-            newMedia.mediaStreamOptions.metadata = {
-                refreshAt: newMedia.mediaStreamOptions.refreshAt
-            };
+            if (newMedia.mediaStreamOptions != null) {
+                newMedia.mediaStreamOptions.refreshAt = Date.now() + REFRESH_TIMEOUT;
+                newMedia.mediaStreamOptions.metadata = {
+                    refreshAt: newMedia.mediaStreamOptions.refreshAt
+                };
+            }
 
             // reset the timeout and return the new media object
             this.resetStreamTimeout();
@@ -135,7 +139,9 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         }
 
         // cameras tend to be unresponsive, particularly on battery, so send a status request to wake them up
-        await this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, true);
+        if (this.provider.baseStationApiClient != null && this.nativeId != null) {
+            await this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, true);
+        }
 
         // reset the timeout and return the new media object
         this.resetStreamTimeout();
@@ -171,8 +177,10 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
         this.refreshTimeout = setTimeout(() => {
             this.console.debug('stopping stream')
             this.rtspUdpProxy?.teardown();
-            this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
             this.originalMedia = undefined;
+            if (this.provider.baseStationApiClient != null && this.nativeId != null) {
+                this.provider.baseStationApiClient.postUserStreamActive(this.nativeId, false);
+            }
         }, STREAM_TIMEOUT);
     }
 
@@ -188,6 +196,13 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
                 description: 'Enable this setting if you want to allow prebuffering when the camera is charging the battery.',
                 type: 'boolean',
                 value: (this.allowBatteryPrebuffer()).toString(),
+            },
+            {
+                key: 'sendRtcpRr',
+                title: 'Prevent Infinite Streaming on UDP',
+                description: 'Enable this if your camera only supports UDP and you want to send RTCP Receiver Reports to it to avoid it streamining indefinitely. Not compatible with TCP.',
+                type: 'boolean',
+                value: (this.sendRtcpRr()).toString(),
             },
         ]);
     }

@@ -68,12 +68,12 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         ];
     }
 
-    private getArloHost(): string {
+    private getArloHost(): string | null {
         return this.storage.getItem('arloHost');
     }
 
     public getUseHostnames(): boolean {
-        return this.storage.getItem('useHostnames') ==='true';
+        return this.storage.getItem('useHostnames') === 'true';
     }
 
     private async getWebhookUrl(slug: string): Promise<string> {
@@ -84,20 +84,26 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
 
     // implement
     async putSetting(key: string, value: SettingValue) {
-        this.storage.setItem(key, value.toString());
-        await this.discoverDevices();
+        if (value != null) {
+            this.storage.setItem(key, value.toString());
+            await this.discoverDevices();
+        }
     }
 
     /** HttpRequestHandler */
 
     // implement
     async onRequest(request: HttpRequest, response: HttpResponse): Promise<void> {
+        if (request.body == null) {
+            return;   
+        }
+
         this.console.info(`Received webhook request: ${request.body}`);
 
         if (request.url?.endsWith(MOTION_SLUG)) {
             const motionDetectedEvent: MotionDetectedEvent = JSON.parse(request.body);
             if (this.webhookEventIsValid(motionDetectedEvent, response)) {
-                (await this.getDevice(motionDetectedEvent.serial_number)).onMotionDetected();
+                (await this.getDevice(motionDetectedEvent.serial_number))?.onMotionDetected();
             } else {
                 return;
             }
@@ -105,7 +111,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
             const registeredEvent: RegisteredEvent = JSON.parse(request.body);
             if (this.webhookEventIsValid(registeredEvent, response)) {
                 const registration = JSON.parse(registeredEvent.registration);
-                (await this.getDevice(registeredEvent.serial_number)).onRegistrationUpdated(registration);
+                (await this.getDevice(registeredEvent.serial_number))?.onRegistrationUpdated(registration);
             } else {
                 return;
             }
@@ -113,7 +119,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
             const statusUpdatedEvent: StatusUpdatedEvent = JSON.parse(request.body);
             if (this.webhookEventIsValid(statusUpdatedEvent, response)) {
                 const status = JSON.parse(statusUpdatedEvent.status);
-                (await this.getDevice(statusUpdatedEvent.serial_number)).onStatusUpdated(status);
+                (await this.getDevice(statusUpdatedEvent.serial_number))?.onStatusUpdated(status);
             } else {
                 return;
             }
@@ -165,10 +171,11 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         const scryptedDevices: Device[] = [];
 
         this.baseStationApiClient = new BaseStationApiClient(`${arloHost}`);
-        let listDevicesResponse: DeviceSummary[];
+        
+        let listDevicesResponse: DeviceSummary[] | undefined;
         try {
             listDevicesResponse = await this.baseStationApiClient.listDevices();
-            if (listDevicesResponse.length === 0) {
+            if (listDevicesResponse == null || listDevicesResponse.length === 0) {
                 this.console.warn('Connection to local Arlo device API succeeded, but no devices were returned.');
                 return;
             }
@@ -180,17 +187,17 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         await Promise.allSettled(listDevicesResponse.map(async (deviceSummary: DeviceSummary) => {
             const serialNumber = deviceSummary.serial_number;
 
-            let deviceRegistration: DeviceRegistration;
+            let deviceRegistration: DeviceRegistration | undefined;
             try {
-                deviceRegistration = await this.baseStationApiClient.getRegistration(serialNumber);
+                deviceRegistration = await this.baseStationApiClient!.getRegistration(serialNumber);
                 this.console.debug(`Registration retrieved for ${serialNumber}.`);
             } catch (error) {
                 this.console.warn(`Registration retrieval failed for ${serialNumber}; device may not operate correctly. Error: ${error}`);
             }
 
-            let deviceStatus: DeviceStatus;
+            let deviceStatus: DeviceStatus | undefined;
             try {
-                deviceStatus = await this.baseStationApiClient.getStatus(serialNumber);
+                deviceStatus = await this.baseStationApiClient!.getStatus(serialNumber);
                 this.console.debug(`Status retrieved for ${serialNumber}.`);
             } catch (error) {
                 this.console.warn(`Status retrieval failed for ${serialNumber}; device may not operate correctly. Error: ${error}`);
@@ -238,7 +245,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
     }
 
     // implement
-    async getDevice(nativeId: string): Promise<ArloDeviceBase> {
+    async getDevice(nativeId: string): Promise<ArloDeviceBase | undefined> {
         if (this.arloDevices.has(nativeId))
             return this.arloDevices.get(nativeId);
         const arloRawDevice = this.arloRawDevices.get(nativeId);
@@ -263,12 +270,12 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
         return retDevice;
     }
 
-    private static getDeviceInterfaces(deviceRegistration: DeviceRegistration, deviceStatus: DeviceStatus): string[] {
+    private static getDeviceInterfaces(deviceRegistration: DeviceRegistration | undefined, deviceStatus: DeviceStatus | undefined): string[] {
         let interfaces = [
             ScryptedInterface.Settings
         ];
 
-        for (const capability of deviceRegistration?.Capabilities) {
+        for (const capability of deviceRegistration?.Capabilities ?? []) {
             switch (capability.toLowerCase()) {
                 case 'h.264streaming':
                     interfaces.push(ScryptedInterface.VideoCamera);

@@ -1,4 +1,4 @@
-import { RtcpReceiverInfo, RtcpRrPacket, RtcpPacketConverter, RtcpSrPacket, RtpPacket } from 'werift';
+import { RtcpReceiverInfo, RtcpRrPacket, RtcpPacketConverter, RtcpSrPacket, RtpPacket } from 'werift-rtp';
 
 const MAX_DROPOUT = 3000;
 const MAX_MISORDER = 100;

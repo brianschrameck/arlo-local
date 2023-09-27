@@ -153,13 +153,16 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
     }
 
     async buildRtspUrl(): Promise<string> {
+        const preferredUrl = this.provider.getUseHostnames() ? this.deviceSummary.hostname : this.deviceSummary.ip;
+
+        // TODO: use port 555 for 4k cameras
         if (this.sendRtcpRr()) {
             this.console.info('About to create proxy');
-            this.rtspUdpProxy = new RtspUdpProxy(`rtsp://${this.deviceSummary.ip}/live`);
-            let proxyPort = await this.rtspUdpProxy.proxyUdpWithRtcp(); // TODO: use port 555 for 4k cameras
+            this.rtspUdpProxy = new RtspUdpProxy(`rtsp://${preferredUrl}/live`);
+            let proxyPort = await this.rtspUdpProxy.proxyUdpWithRtcp();
             return `rtsp://127.0.0.1:${proxyPort}`;
         } else {
-            return `rtsp://${this.deviceSummary.ip}/live`;
+            return `rtsp://${preferredUrl}/live`;
         }
     }
 
@@ -185,13 +188,6 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
                 description: 'Enable this setting if you want to allow prebuffering when the camera is charging the battery.',
                 type: 'boolean',
                 value: (this.allowBatteryPrebuffer()).toString(),
-            },
-            {
-                key: 'sendRtcpRr',
-                title: 'Prevent Infinite Streaming on UDP',
-                description: 'Enable this if your camera only supports UDP and you want to send RTCP Receiver Reports to it to avoid it streamining indefinitely. Not compatible with TCP.',
-                type: 'boolean',
-                value: (this.sendRtcpRr()).toString(),
             },
         ]);
     }

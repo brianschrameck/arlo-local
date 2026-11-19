@@ -1,6 +1,6 @@
 {
    "name": "@scrypted/arlo-local",
-   "version": "0.6.0",
+   "version": "0.6.1",
    "description": "Arlo Local Plugin for Scrypted",
    "keywords": [
       "scrypted",

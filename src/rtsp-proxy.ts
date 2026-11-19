@@ -5,9 +5,9 @@ import { RtcpSession } from './rtcp-session';
 import { Socket } from 'dgram';
 
 export class RtspUdpProxy {
-    private rtspClient: RtspClient;
-    private rtspServer: RtspServer;
-    private server: net.Server;
+    private rtspClient?: RtspClient;
+    private rtspServer?: RtspServer;
+    private server?: net.Server;
 
     constructor(private rtspClientUrl: string) {
         this.rtspClientUrl = rtspClientUrl;
@@ -45,7 +45,12 @@ export class RtspUdpProxy {
                     type: 'udp',
                     onRtp: (_, rtp) => {
                         rtcpSession.onRtp(rtp)
-                        this.rtspServer.sendTrack(setupTrack.control, rtp, false);
+
+                        if (this.rtspServer) {
+                            this.rtspServer.sendTrack(setupTrack.control, rtp, false);
+                        } else {
+                            console.warn('rtspServer is null, cannot send track');
+                        }
                     },
                 };
 
@@ -67,7 +72,7 @@ export class RtspUdpProxy {
                         if (rtpcPublishPort) {
                             // ensure we can contact the RTCP port on the server
                             const { hostname } = new URL(this.rtspClientUrl);
-                            const punch = Buffer.alloc(1);
+                            const punch = new Uint8Array(1);
                             rtcpDgram.send(punch, rtpcPublishPort, hostname);
 
                             // when we receive an RTCP Sender Report...
@@ -78,18 +83,20 @@ export class RtspUdpProxy {
                                     // build and send an RTCP Receiver Report
                                     const rr = rtcpSession.buildReceiverReport();
                                     if (rr != null && rtcpDgram != null) {
-                                        rtcpDgram.send(rr.serialize(), rtpcPublishPort, hostname);
+                                        rtcpDgram.send(Uint8Array.from(rr.serialize()), rtpcPublishPort, hostname);
+                                    } else {
+                                        console.warn('no receiver report to send');
                                     }
                                 } catch (error) {
                                     // Do nothing for now.
-                                    console.error('Error creating receiver report');
+                                    console.error('Error creating receiver report', error);
                                 }
                             });
                         }
                     }
                 }
 
-                this.server.on('close', () => {
+                this.server?.on('close', () => {
                     console.log('closing rtcp dgram');
                     if (rtcpDgram) {
                         closeQuiet(rtcpDgram);
@@ -97,7 +104,7 @@ export class RtspUdpProxy {
                 });
             }
 
-            this.server.on('close', () => {
+            this.server?.on('close', () => {
                 console.log('closing rtcp proxy');
                 serverSocket.destroy();
             });
@@ -108,7 +115,7 @@ export class RtspUdpProxy {
         });
 
         // listen on a random port
-        await listenZero(this.server);
+        (await listenZero(this.server, '127.0.0.1'));
 
         // return the port that this server is listening on
         return (this.server.address() as AddressInfo).port;

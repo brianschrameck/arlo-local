@@ -303,7 +303,7 @@ class ArloDeviceProvider extends ScryptedDeviceBase implements DeviceProvider, S
     }
 }
 
-class ArloRawDevice {
+interface ArloRawDevice {
     deviceSummary: DeviceSummary;
     deviceRegistration?: DeviceRegistration;
     deviceStatus?: DeviceStatus;

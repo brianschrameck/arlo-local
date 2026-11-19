@@ -1,4 +1,4 @@
-import axios, { AxiosError, AxiosInstance, Method } from 'axios';
+import axios, { AxiosInstance, Method } from 'axios';
 import https from 'https';
 import { sleep } from './sleep';
 
@@ -77,18 +77,19 @@ export class BaseStationApiClient {
         return response.data;
     }
 
-    private handleError(error: AxiosError) {
-        if (error.response) {
+    private handleError(error: unknown) {
+        const axiosError = axios.isAxiosError(error) ? error : undefined;
+        if (axiosError?.response) {
             // Request made but the server responded with an error
-            console.log(error.response.data);
-            console.log(error.response.status);
-            console.log(error.response.headers);
-        } else if (error.request) {
+            console.error(axiosError.response.data);
+            console.error(axiosError.response.status);
+            console.error(axiosError.response.headers);
+        } else if (axiosError?.request) {
             // Request made but no response is received from the server.
-            console.log(error.request);
+            console.error(axiosError.request);
         } else {
             // Error occured while setting up the request
-            console.log('Error', error.message);
+            console.error('Error', error instanceof Error ? error.message : error);
         }
     }
 }

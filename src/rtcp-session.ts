@@ -120,6 +120,8 @@ export class RtcpSession {
 
     buildReceiverReport(): RtcpRrPacket | undefined {
         if (!this.seqInfo || !this.lastSr) {
+            console.warn('Cannot build receiver report: seqInfo or lastSr is missing. This is expected at the start of a stream, '
+                + 'and should be resolved once multiple packets are received.');
             return;
         }
 
@@ -149,7 +151,7 @@ export class RtcpSession {
     }
 
     private hrToMicros(hrTs: bigint): number {
-        return (hrTs[0] * 1000000) + (hrTs[1] / 1000);
+        return Number(hrTs / 1000n);
     }
 
     private getUInt64Bytes(x: bigint): Buffer {

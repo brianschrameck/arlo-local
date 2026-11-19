@@ -8,8 +8,8 @@ const DEFAULT_MOTION_TIMEOUT = 10; // seconds
 export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, MotionSensor, Settings {
     motionTimeout?: NodeJS.Timeout;
     deviceSummary: DeviceSummary;
-    deviceRegistration: DeviceRegistration;
-    deviceStatus: DeviceStatus;
+    deviceRegistration?: DeviceRegistration;
+    deviceStatus?: DeviceStatus;
     externallyPowered: boolean = false;
 
     constructor(public provider: ArloDeviceProvider, nativeId: string, deviceSummary: DeviceSummary, deviceRegistration: DeviceRegistration | undefined, deviceStatus: DeviceStatus | undefined) {
@@ -91,7 +91,7 @@ export class ArloDeviceBase extends ScryptedDeviceBase implements Battery, Motio
     }
 
     isAudioDisabled() {
-        return this.storage.getItem('isAudioDisabled') === 'true' || this.deviceRegistration.SystemModelNumber === 'VMC3030';
+        return this.storage.getItem('isAudioDisabled') === 'true' || this.deviceRegistration?.SystemModelNumber === 'VMC3030';
     }
 
     isDeviceDisabled() {

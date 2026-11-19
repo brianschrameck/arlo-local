@@ -15,7 +15,7 @@ export class ArloCameraDevice extends ArloDeviceBase implements Camera, VideoCam
     private refreshTimeout?: NodeJS.Timeout;
     private originalMedia?: FFmpegInput;
     private isSnapshotEligible: boolean = true;
-    private cachedSnapshot?: ArrayBuffer;
+    private cachedSnapshot?: Buffer;
     private snapshotInProgress: boolean = false;
     private rtspUdpProxy?: RtspUdpProxy;
 

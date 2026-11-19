@@ -16,6 +16,18 @@ export class RtspUdpProxy {
 
     async proxyUdpWithRtcp(): Promise<Number> {
         this.server = net.createServer(async serverSocket => {
+            serverSocket.on('error', error => {
+                if ((error as NodeJS.ErrnoException).code !== 'EPIPE') {
+                    console.error('RTSP proxy client socket error', error);
+                }
+            });
+            serverSocket.on('close', () => {
+                this.rtspClient?.safeTeardown();
+                if (this.server?.listening) {
+                    this.server.close();
+                }
+            });
+
             // create an RTSP client to read from the camera
             this.rtspClient = new RtspClient(this.rtspClientUrl);
 
@@ -53,9 +65,9 @@ export class RtspUdpProxy {
                     onRtp: (_, rtp) => {
                         rtcpSessionForTrack.onRtp(rtp);
 
-                        if (this.rtspServer) {
+                        if (this.rtspServer && !serverSocket.destroyed) {
                             this.rtspServer.sendTrack(setupTrack.control, rtp, false);
-                        } else {
+                        } else if (!serverSocket.destroyed) {
                             console.warn('rtspServer is null, cannot send track');
                         }
                     },
@@ -172,7 +184,11 @@ export class RtspUdpProxy {
     async teardown() {
         console.log('tearing down');
         this.rtspClient?.safeTeardown();
-        this.rtspServer?.teardown('', {});
-        this.server?.close();
+        if (this.rtspServer && !this.rtspServer.client.destroyed) {
+            this.rtspServer.teardown('', {});
+        }
+        if (this.server?.listening) {
+            this.server.close();
+        }
     }
 }
